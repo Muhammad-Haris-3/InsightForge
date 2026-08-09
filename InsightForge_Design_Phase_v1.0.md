@@ -28,7 +28,7 @@ Trade-off: querying/aggregating won't be as fast as a normalized data table, but
 
 ## 2. Database Schema
 
-Five tables, matching SRS Section 7's conceptual entities, now with full columns and types.
+Five tables, matching SRS Section 7's conceptual entities, now with full columns and types. Runnable DDL: [`schema.sql`](schema.sql).
 
 ### 2.1 `sessions`
 
