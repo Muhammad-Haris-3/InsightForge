@@ -55,7 +55,7 @@ describe("QualityReportView", () => {
   it("flags duplicate rows and missing cells as warnings when present", () => {
     render(<QualityReportView report={buildReport({ duplicate_row_count: 3 })} />);
     const dupValue = screen.getByText("3");
-    expect(dupValue.className).toContain("text-amber-600");
+    expect(dupValue.className).toContain("text-amber-400");
   });
 
   it("renders a numeric column's summary as mean/median/range", () => {

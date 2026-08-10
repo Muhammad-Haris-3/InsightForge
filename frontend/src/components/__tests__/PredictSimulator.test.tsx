@@ -103,7 +103,7 @@ describe("PredictSimulator", () => {
     );
     render(<PredictSimulator datasetId="d1" run={regressionRun({ target_column: "city" })} columns={columns} eda={eda} />);
 
-    await waitFor(() => expect(screen.getByText("Lahore", { selector: "span.font-semibold" })).toBeInTheDocument(), WAIT_OPTS);
+    await waitFor(() => expect(screen.getByText("Lahore", { selector: "span.font-bold" })).toBeInTheDocument(), WAIT_OPTS);
     expect(screen.getByText("Lahore 60%")).toBeInTheDocument();
     expect(screen.getByText("Karachi 40%")).toBeInTheDocument();
   }, 10000);

@@ -4,10 +4,10 @@ import type { CategoricalFrequency, CorrelationMatrix, EdaReport, NumericDistrib
 // Validated categorical slots (dataviz skill palette.md) — distinct hues per
 // chart type rather than eyeballed colors, kept consistent everywhere a chart
 // of that kind appears in the app.
-const HISTOGRAM_COLOR = "#2a78d6"; // slot 1, blue
-const FREQUENCY_COLOR = "#1baf7a"; // slot 3, aqua
-const DIVERGING_POSITIVE = "#2a78d6"; // blue
-const DIVERGING_NEGATIVE = "#e34948"; // red
+const HISTOGRAM_COLOR = "#60a5fa"; // brighter blue for dark bg
+const FREQUENCY_COLOR = "#34d399"; // emerald for dark bg
+const DIVERGING_POSITIVE = "#60a5fa"; // blue
+const DIVERGING_NEGATIVE = "#f87171"; // brighter red for dark bg
 
 function formatBinLabel(start: number, end: number): string {
   return start === end ? `${start}` : `${start}–${end}`;
@@ -20,15 +20,24 @@ function NumericHistogram({ distribution }: { distribution: NumericDistribution 
   }));
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl bg-zinc-50 p-3 dark:bg-zinc-950/40">
-      <h4 className="text-sm font-medium text-black dark:text-zinc-50">{distribution.column_name}</h4>
+    <div className="glass-inner flex flex-col gap-2.5 rounded-xl p-4">
+      <h4 className="text-sm font-medium text-slate-200">{distribution.column_name}</h4>
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-zinc-200 dark:stroke-zinc-800" />
-          <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-          <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} cursor={{ fill: "rgba(42, 120, 214, 0.06)" }} />
-          <Bar dataKey="count" fill={HISTOGRAM_COLOR} radius={[3, 3, 0, 0]} />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.06)" />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 10, fill: "#64748b" }} allowDecimals={false} />
+          <Tooltip
+            contentStyle={{
+              fontSize: 12,
+              borderRadius: 8,
+              background: "rgba(15,23,42,0.95)",
+              border: "1px solid rgba(148,163,184,0.1)",
+              color: "#e2e8f0",
+            }}
+            cursor={{ fill: "rgba(96, 165, 250, 0.06)" }}
+          />
+          <Bar dataKey="count" fill={HISTOGRAM_COLOR} radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -39,15 +48,24 @@ function CategoricalBarChart({ frequency }: { frequency: CategoricalFrequency })
   const data = frequency.categories.map((c) => ({ label: c.value, count: c.count }));
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl bg-zinc-50 p-3 dark:bg-zinc-950/40">
-      <h4 className="text-sm font-medium text-black dark:text-zinc-50">{frequency.column_name}</h4>
+    <div className="glass-inner flex flex-col gap-2.5 rounded-xl p-4">
+      <h4 className="text-sm font-medium text-slate-200">{frequency.column_name}</h4>
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-zinc-200 dark:stroke-zinc-800" />
-          <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={50} />
-          <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-          <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} cursor={{ fill: "rgba(27, 175, 122, 0.06)" }} />
-          <Bar dataKey="count" fill={FREQUENCY_COLOR} radius={[3, 3, 0, 0]} />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.06)" />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }} interval={0} angle={-30} textAnchor="end" height={50} />
+          <YAxis tick={{ fontSize: 10, fill: "#64748b" }} allowDecimals={false} />
+          <Tooltip
+            contentStyle={{
+              fontSize: 12,
+              borderRadius: 8,
+              background: "rgba(15,23,42,0.95)",
+              border: "1px solid rgba(148,163,184,0.1)",
+              color: "#e2e8f0",
+            }}
+            cursor={{ fill: "rgba(52, 211, 153, 0.06)" }}
+          />
+          <Bar dataKey="count" fill={FREQUENCY_COLOR} radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -57,7 +75,7 @@ function CategoricalBarChart({ frequency }: { frequency: CategoricalFrequency })
 function correlationCellStyle(value: number | null): React.CSSProperties {
   if (value == null) return { backgroundColor: "transparent" };
   const alpha = Math.abs(value) * 0.85 + (value !== 0 ? 0.08 : 0);
-  const [r, g, b] = value >= 0 ? [42, 120, 214] : [227, 73, 72]; // DIVERGING_POSITIVE / DIVERGING_NEGATIVE as RGB
+  const [r, g, b] = value >= 0 ? [96, 165, 250] : [248, 113, 113]; // DIVERGING_POSITIVE / DIVERGING_NEGATIVE as RGB
   return { backgroundColor: `rgba(${r}, ${g}, ${b}, ${Math.min(alpha, 1)})` };
 }
 
@@ -65,7 +83,7 @@ function correlationTextStyle(value: number | null): React.CSSProperties {
   // Once the fill gets dark enough, flip to white text for contrast rather
   // than letting dark-on-dark become unreadable at high |correlation|.
   if (value == null) return {};
-  return Math.abs(value) > 0.45 ? { color: "white" } : {};
+  return Math.abs(value) > 0.45 ? { color: "white" } : { color: "#cbd5e1" };
 }
 
 function CorrelationHeatmap({ matrix }: { matrix: CorrelationMatrix }) {
@@ -76,7 +94,7 @@ function CorrelationHeatmap({ matrix }: { matrix: CorrelationMatrix }) {
           <tr>
             <th className="p-1" />
             {matrix.columns.map((col) => (
-              <th key={col} className="whitespace-nowrap p-1 font-medium text-zinc-500">
+              <th key={col} className="whitespace-nowrap p-1 font-medium text-slate-500">
                 {col}
               </th>
             ))}
@@ -85,11 +103,11 @@ function CorrelationHeatmap({ matrix }: { matrix: CorrelationMatrix }) {
         <tbody>
           {matrix.columns.map((rowCol, i) => (
             <tr key={rowCol}>
-              <th className="whitespace-nowrap p-1 pr-2 text-right font-medium text-zinc-500">{rowCol}</th>
+              <th className="whitespace-nowrap p-1 pr-2 text-right font-medium text-slate-500">{rowCol}</th>
               {matrix.matrix[i].map((value, j) => (
                 <td
                   key={matrix.columns[j]}
-                  className="h-10 w-10 rounded-md text-center font-medium tabular-nums text-zinc-800 dark:text-zinc-100"
+                  className="h-10 w-10 rounded-md text-center font-medium tabular-nums"
                   style={{ ...correlationCellStyle(value), ...correlationTextStyle(value) }}
                   title={value == null ? "undefined" : value.toFixed(2)}
                 >
@@ -100,10 +118,10 @@ function CorrelationHeatmap({ matrix }: { matrix: CorrelationMatrix }) {
           ))}
         </tbody>
       </table>
-      <p className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-        <span className="inline-flex h-2 w-16 rounded-full" style={{ background: DIVERGING_NEGATIVE }} />
+      <p className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+        <span className="inline-flex h-2.5 w-16 rounded-full" style={{ background: `linear-gradient(90deg, ${DIVERGING_NEGATIVE}, transparent)` }} />
         negative
-        <span className="ml-2 inline-flex h-2 w-16 rounded-full" style={{ background: DIVERGING_POSITIVE }} />
+        <span className="ml-2 inline-flex h-2.5 w-16 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${DIVERGING_POSITIVE})` }} />
         positive
       </p>
     </div>
@@ -117,12 +135,13 @@ export function EdaView({ eda }: { eda: EdaReport }) {
   if (!hasNumeric && !hasCategorical) return null;
 
   return (
-    <div className="flex flex-col gap-6 rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="font-semibold text-black dark:text-zinc-50">Exploratory Data Analysis</h2>
+    <div className="glass-card flex flex-col gap-6 rounded-2xl p-6">
+      <h2 className="font-semibold text-slate-100 text-lg">Exploratory Data Analysis</h2>
 
       {hasNumeric && (
         <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">Distributions</h3>
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Distributions</h3>
+          <div className="section-divider" />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {eda.numeric_distributions.map((dist) => (
               <NumericHistogram key={dist.column_name} distribution={dist} />
@@ -133,7 +152,8 @@ export function EdaView({ eda }: { eda: EdaReport }) {
 
       {hasCategorical && (
         <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">Category Frequencies</h3>
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Category Frequencies</h3>
+          <div className="section-divider" />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {eda.categorical_frequencies.map((freq) => (
               <CategoricalBarChart key={freq.column_name} frequency={freq} />
@@ -144,7 +164,8 @@ export function EdaView({ eda }: { eda: EdaReport }) {
 
       {eda.correlation_matrix && (
         <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">Correlation Matrix</h3>
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Correlation Matrix</h3>
+          <div className="section-divider" />
           <CorrelationHeatmap matrix={eda.correlation_matrix} />
         </div>
       )}

@@ -85,7 +85,7 @@ export function UploadPanel() {
   );
 
   return (
-    <div className="flex w-full max-w-3xl flex-col gap-8">
+    <div className="flex w-full max-w-3xl flex-col gap-8 animate-fadeInUp delay-200">
       <div
         role="button"
         tabIndex={0}
@@ -97,21 +97,21 @@ export function UploadPanel() {
         }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={onDrop}
-        className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-14 text-center shadow-sm transition-all duration-150 ${
-          isDragOver
-            ? "scale-[1.01] border-emerald-500 bg-emerald-50 shadow-emerald-500/10 dark:bg-emerald-950/20"
-            : "border-zinc-300 bg-white hover:border-emerald-400 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-emerald-600"
+        className={`upload-zone flex cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl px-6 py-16 text-center ${
+          isDragOver ? "drag-over" : ""
         }`}
       >
         <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFileChange} />
         <div
-          className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${
-            isDragOver ? "bg-emerald-100 dark:bg-emerald-900/40" : "bg-zinc-100 dark:bg-zinc-800"
+          className={`flex h-14 w-14 items-center justify-center rounded-xl transition-all duration-300 ${
+            isDragOver
+              ? "bg-emerald-500/20 shadow-[0_0_20px_rgba(52,211,153,0.2)]"
+              : "bg-slate-800/60 border border-slate-700/50"
           }`}
         >
           <svg
             viewBox="0 0 24 24"
-            className={`h-6 w-6 ${isDragOver ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-500"}`}
+            className={`h-6 w-6 transition-colors duration-300 ${isDragOver ? "text-emerald-400" : "text-slate-400"}`}
             fill="none"
             aria-hidden="true"
           >
@@ -131,15 +131,27 @@ export function UploadPanel() {
             />
           </svg>
         </div>
-        <p className="font-medium text-black dark:text-zinc-50">
-          {status === "uploading" ? "Uploading…" : "Drop a CSV here, or click to browse"}
-        </p>
-        <p className="text-sm text-zinc-500">Max 10MB · .csv only</p>
+        <div className="flex flex-col gap-1">
+          <p className="font-medium text-slate-200">
+            {status === "uploading" ? (
+              <span className="flex items-center gap-2 justify-center">
+                <svg className="h-4 w-4 animate-spin-custom" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v3a5 5 0 0 0-5 5H4Z" />
+                </svg>
+                Uploading…
+              </span>
+            ) : (
+              "Drop a CSV here, or click to browse"
+            )}
+          </p>
+          <p className="text-sm text-slate-500">Max 10 MB · .csv only</p>
+        </div>
       </div>
 
       {error && (
-        <p className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
-          <svg viewBox="0 0 20 20" className="mt-0.5 h-4 w-4 flex-shrink-0" fill="currentColor" aria-hidden="true">
+        <div className="error-card flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm animate-fadeIn">
+          <svg viewBox="0 0 20 20" className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" fill="currentColor" aria-hidden="true">
             <path
               fillRule="evenodd"
               d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.63-1.516 2.63H3.72c-1.347 0-2.189-1.463-1.515-2.63L8.485 2.495ZM10 6a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 6Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
@@ -147,19 +159,33 @@ export function UploadPanel() {
             />
           </svg>
           {error}
-        </p>
+        </div>
       )}
 
-      {report && <QualityReportView report={report} />}
-      {report?.eda && <EdaView eda={report.eda} />}
+      {report && (
+        <div className="animate-fadeInUp">
+          <QualityReportView report={report} />
+        </div>
+      )}
+      {report?.eda && (
+        <div className="animate-fadeInUp delay-100">
+          <EdaView eda={report.eda} />
+        </div>
+      )}
       {report && report.columns.length >= 2 && (
-        <StatsTestPanel key={`tests-${report.id}`} datasetId={report.id} columns={report.columns} />
+        <div className="animate-fadeInUp delay-200">
+          <StatsTestPanel key={`tests-${report.id}`} datasetId={report.id} columns={report.columns} />
+        </div>
       )}
       {report && (
-        <ModelPanel key={`model-${report.id}`} datasetId={report.id} columns={report.columns} eda={report.eda ?? null} />
+        <div className="animate-fadeInUp delay-300">
+          <ModelPanel key={`model-${report.id}`} datasetId={report.id} columns={report.columns} eda={report.eda ?? null} />
+        </div>
       )}
       {report && (
-        <ReportExportButton key={`export-${report.id}`} datasetId={report.id} filename={report.original_filename} />
+        <div className="animate-fadeInUp delay-400">
+          <ReportExportButton key={`export-${report.id}`} datasetId={report.id} filename={report.original_filename} />
+        </div>
       )}
     </div>
   );

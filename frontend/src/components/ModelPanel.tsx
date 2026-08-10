@@ -19,10 +19,7 @@ const METRIC_LABELS: Record<string, string> = {
 
 // Validated categorical slot 2 (orange) — dataviz skill palette.md — kept
 // distinct from the blue/aqua used by the EDA charts (histograms/frequency).
-const IMPORTANCE_COLOR = "#eb6834";
-
-const SELECT_STYLES =
-  "rounded-lg border border-zinc-300 bg-white px-3 py-2 text-black shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50";
+const IMPORTANCE_COLOR = "#fb923c"; // brighter orange for dark bg
 
 function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -36,11 +33,25 @@ function FeatureImportanceChart({ importance }: { importance: Record<string, num
   return (
     <ResponsiveContainer width="100%" height={Math.max(120, data.length * 32)}>
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" className="stroke-zinc-200 dark:stroke-zinc-800" />
-        <XAxis type="number" domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 10 }} />
-        <YAxis type="category" dataKey="column" width={90} tick={{ fontSize: 10 }} />
-        <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} cursor={{ fill: "rgba(235, 104, 52, 0.06)" }} />
-        <Bar dataKey="Importance (%)" fill={IMPORTANCE_COLOR} radius={[0, 3, 3, 0]} />
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.06)" />
+        <XAxis
+          type="number"
+          domain={[0, 100]}
+          tickFormatter={(v: number) => `${v}%`}
+          tick={{ fontSize: 10, fill: "#64748b" }}
+        />
+        <YAxis type="category" dataKey="column" width={90} tick={{ fontSize: 10, fill: "#94a3b8" }} />
+        <Tooltip
+          contentStyle={{
+            fontSize: 12,
+            borderRadius: 8,
+            background: "rgba(15,23,42,0.95)",
+            border: "1px solid rgba(148,163,184,0.1)",
+            color: "#e2e8f0",
+          }}
+          cursor={{ fill: "rgba(251, 146, 60, 0.06)" }}
+        />
+        <Bar dataKey="Importance (%)" fill={IMPORTANCE_COLOR} radius={[0, 4, 4, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -95,17 +106,19 @@ export function ModelPanel({
   if (targetableColumns.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200/70 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="font-semibold text-black dark:text-zinc-50">Baseline Model</h2>
-      <p className="text-sm text-zinc-500">
-        Pick a target column — a numeric target trains a regression model, a categorical/boolean target trains a
-        classifier, both via a random forest with an 80/20 train/test split.
-      </p>
+    <div className="glass-card flex flex-col gap-5 rounded-2xl p-6">
+      <div>
+        <h2 className="font-semibold text-slate-100 text-lg">Baseline Model</h2>
+        <p className="text-sm text-slate-500 mt-1">
+          Pick a target column — a numeric target trains a regression model, a categorical/boolean target trains a
+          classifier, both via a random forest with an 80/20 train/test split.
+        </p>
+      </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-500">Target column</span>
-          <select value={targetColumn} onChange={(e) => setTargetColumn(e.target.value)} className={SELECT_STYLES}>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="text-slate-400 text-xs uppercase tracking-wider">Target column</span>
+          <select value={targetColumn} onChange={(e) => setTargetColumn(e.target.value)} className="select-styled">
             {targetableColumns.map((c) => (
               <option key={c.column_name} value={c.column_name}>
                 {c.column_name} ({c.data_type})
@@ -117,16 +130,16 @@ export function ModelPanel({
         <button
           onClick={() => void trainModel()}
           disabled={isTraining || !targetColumn}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-medium"
         >
           {isTraining ? "Training…" : "Train Model"}
         </button>
       </div>
 
       {error && (
-        <p className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+        <div className="error-card rounded-xl px-4 py-3 text-sm animate-fadeIn">
           {error}
-        </p>
+        </div>
       )}
 
       {runs.length > 0 && (
@@ -134,32 +147,34 @@ export function ModelPanel({
           {runs.map((run) => (
             <div
               key={run.id}
-              className="flex flex-col gap-3 rounded-xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800/60 dark:bg-zinc-950/40"
+              className="glass-inner flex flex-col gap-4 rounded-xl p-5 animate-fadeInUp"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800 dark:bg-orange-950/50 dark:text-orange-300">
+                  <span className="badge bg-orange-500/15 text-orange-300 border border-orange-500/20">
                     {MODEL_TYPE_LABELS[run.model_type] ?? run.model_type}
                   </span>
-                  <span className="text-sm font-medium text-black dark:text-zinc-50">target: {run.target_column}</span>
+                  <span className="text-sm font-medium text-slate-200">target: {run.target_column}</span>
                 </div>
-                <span className="text-xs text-zinc-500">{formatTimestamp(run.created_at)}</span>
+                <span className="text-xs text-slate-600 font-mono">{formatTimestamp(run.created_at)}</span>
               </div>
 
               <dl className="flex flex-wrap gap-3">
                 {Object.entries(run.metrics).map(([key, value]) => (
-                  <div key={key} className="rounded-lg bg-white px-3 py-1.5 shadow-sm dark:bg-zinc-900">
-                    <dt className="text-xs text-zinc-500">{METRIC_LABELS[key] ?? key}</dt>
-                    <dd className="font-semibold tabular-nums text-black dark:text-zinc-50">{value.toFixed(4)}</dd>
+                  <div key={key} className="stat-card">
+                    <dt className="text-xs text-slate-500 uppercase tracking-wider">{METRIC_LABELS[key] ?? key}</dt>
+                    <dd className="font-semibold tabular-nums text-slate-100 font-mono mt-0.5">{value.toFixed(4)}</dd>
                   </div>
                 ))}
               </dl>
 
-              <p className="text-sm text-black dark:text-zinc-50">{run.feature_importance_summary}</p>
+              <p className="text-sm text-slate-300">{run.feature_importance_summary}</p>
 
               {run.feature_importance && Object.keys(run.feature_importance).length > 0 && (
                 <FeatureImportanceChart importance={run.feature_importance} />
               )}
+
+              <div className="section-divider" />
 
               <PredictSimulator datasetId={datasetId} run={run} columns={columns} eda={eda} />
             </div>
