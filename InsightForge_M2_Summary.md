@@ -32,7 +32,8 @@ None. The Design Phase doc's schema has no `eda_results` table — EDA is comput
 3. Confirmed the boolean `active` column correctly appears in `categorical_frequencies` (True/False counts) rather than being silently dropped.
 4. Confirmed session isolation still holds: `GET /eda` on another session's dataset ID returns `404 dataset_not_found`, not the data (mirrors the M1 check for `/quality-report`).
 5. Frontend rendered all three sections correctly in a real browser (histograms, category bar charts, correlation heatmap) with no console errors; page text/DOM inspection confirmed chart data matched the API response.
-6. Test data and the temporary local `datasets` row created during verification were deleted from Neon afterward — production DB is clean. (This milestone was verified locally only — not yet pushed/redeployed; production still runs M1.)
+6. Test data and the temporary local `datasets` row created during verification were deleted from Neon afterward — production DB is clean.
+7. Pushed to `main` (`53e4fcb`); confirmed the deploy on the actual production URLs (`insight-forge-beta.vercel.app` → `insightforge-api-muyx.onrender.com`) — Render auto-redeployed and `GET /api/datasets/{id}/eda` was live within the push-to-deploy window (confirmed via a probe returning `dataset_not_found` for a random ID, i.e. the route exists). Uploaded the same 18-row CSV through the live frontend: quality report and all three EDA sections (histograms, category frequencies, correlation matrix) rendered correctly cross-site. Verification row deleted from Neon afterward.
 
 ## 5. Decisions & notes worth remembering
 
@@ -43,9 +44,9 @@ None. The Design Phase doc's schema has no `eda_results` table — EDA is comput
 
 ## 6. Definition of Done (SRS Section 8.1) — checked
 
-- [x] Feature works end-to-end locally against the real Neon database — not yet re-verified on the deployed URL (pending push/redeploy)
+- [x] Feature works end-to-end on the deployed URL, not just locally — verified on both localhost and the live Vercel/Render URLs
 - [x] Edge cases handled: single-unique-value numeric column, missing values, long-tail categorical columns, constant columns (undefined correlation), fewer than 2 numeric columns, boolean columns
-- [ ] Code committed with a descriptive message; README updated — pending
+- [x] Code committed with a descriptive message (`53e4fcb`); README updated
 - [x] Automated tests cover the new logic (11 new backend tests, all passing)
 
 ## 7. Next
