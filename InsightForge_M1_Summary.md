@@ -37,6 +37,7 @@ Companion to [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx) (Section 8
 3. Confirmed session isolation: a request with no cookie against another session's dataset ID gets `404 dataset_not_found`, not the data.
 4. Frontend run locally (`next dev`) in a real browser against the local backend: uploaded a CSV end-to-end, confirmed the rendered report matched the API response, confirmed the client-side reject path (non-`.csv` file → inline error, no network call) and the server reject path (network request visible, 4xx handled).
 5. Test data and the temporary local `datasets`/`sessions` rows created during verification were deleted from Neon afterward — production DB is clean.
+6. Pushed to `main`; confirmed the deploy on the actual production URLs (`insight-forge-beta.vercel.app` → `insightforge-api-muyx.onrender.com`) — Render's Blueprint sync picked up the new `COOKIE_SECURE`/`COOKIE_SAMESITE` env vars from `render.yaml` automatically (`Set-Cookie` header showed `Secure; SameSite=none`), and an upload through the live frontend round-tripped correctly cross-site. Verification rows deleted from Neon afterward.
 
 ## 5. Decisions & notes worth remembering
 
@@ -47,15 +48,14 @@ Companion to [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx) (Section 8
 
 ## 6. Definition of Done (SRS Section 8.1) — checked
 
-- [x] Feature works end-to-end locally against the live Neon DB (not yet re-verified on the deployed Vercel/Render URLs — see Section 7)
+- [x] Feature works end-to-end on the deployed URL, not just locally — verified on both localhost and the live Vercel/Render URLs
 - [x] Edge cases handled: empty file, wrong file type, oversized file, malformed CSV, missing values, single-column data, duplicate rows
-- [x] Code committed with descriptive messages *(pending — not yet committed as of this doc)*; README to be updated
+- [x] Code committed with a descriptive message (`23d29e8`); README updated
 - [x] Automated tests cover the new logic (23 backend tests, all passing)
 
 ## 7. Next
 
-- Deploy this milestone (push to `main`, Render/Vercel auto-redeploy) and re-verify the upload flow against the deployed URLs, since M1 was only verified locally so far.
-- **M2 — Auto-EDA**: distribution/correlation visualizations (FR-4), per SRS Section 8.
+**M2 — Auto-EDA**: distribution/correlation visualizations (FR-4), per SRS Section 8.
 
 ---
 
