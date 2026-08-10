@@ -1,8 +1,10 @@
 import io
+import re
 import uuid
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.orm import Session as DbSession
 
 from app.database import get_db
@@ -18,9 +20,12 @@ from app.schemas import (
     TestResultOut,
 )
 from app.services.eda import build_eda_payload
+from app.services.pdf_report import generate_report_pdf
 from app.services.profiling import profile_dataframe, validate_and_parse_csv
 from app.services.stats_tests import select_and_run_test
 from app.session import get_current_session
+
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._ -]")
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -187,3 +192,28 @@ def get_test(
     if test_result is None or test_result.dataset_id != dataset.id:
         raise AppError(404, "test_not_found", "No test result found with that ID.")
     return test_result
+
+
+@router.get("/{dataset_id}/report/pdf")
+def get_report_pdf(
+    dataset_id: uuid.UUID,
+    session: SessionModel = Depends(get_current_session),
+    db: DbSession = Depends(get_db),
+) -> Response:
+    dataset = _get_owned_dataset(dataset_id, session, db)
+    column_types = {c.column_name: c.data_type for c in dataset.columns_profile}
+    eda_payload = build_eda_payload(_load_dataframe(dataset), column_types)
+    pdf_bytes = generate_report_pdf(dataset, dataset.columns_profile, eda_payload, dataset.test_results)
+
+    stem = dataset.original_filename.rsplit(".", 1)[0]
+    # original_filename is user-supplied — strip anything but a safe character
+    # set before it goes into a response header (avoid header-injection / a
+    # malformed Content-Disposition from stray quotes, CR/LF, etc.).
+    safe_stem = _UNSAFE_FILENAME_CHARS.sub("_", stem)[:100] or "dataset"
+    filename = f"{safe_stem}_insightforge_report.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
