@@ -67,6 +67,8 @@ Added a fifth "Baseline Model" section (target, type, algorithm, metrics, plain-
 
 Also fixed the `ReportExportButton` blurb text, which still said "quality report, EDA correlation matrix, and any statistical tests" with no mention of models.
 
+**Verified live** on production (`insight-forge-beta.vercel.app` → `insightforge-api-muyx.onrender.com`) after pushing `00e026d`: uploaded a fresh CSV, trained a regression model on `age` (R²=0.7406, matching the local reproduction exactly), downloaded the PDF, and fetched the exact same PDF bytes independently (hooked `window.fetch` to capture the real dataset ID and URL, then re-fetched and base64-decoded it outside the download flow to rule out any browser-download artifact). Confirmed byte-for-byte length integrity through the transfer (base64 length matched the expected 4·⌈n/3⌉ for the reported byte count before decoding) and read the resulting PDF directly: the "Baseline Model" section renders with the correct target/type/algorithm/metrics/summary, and the Metrics/Strongest Predictors columns no longer overlap — the exact layout bug from Section 9 is confirmed fixed in production, not just locally. Verification row deleted from Neon afterward.
+
 ---
 
 ## Document Control
