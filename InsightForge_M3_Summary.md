@@ -2,7 +2,7 @@
 
 Companion to [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx) (Section 8) and [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md). Records what M3 delivered, how it was verified, and decisions made along the way.
 
-**Status: Complete** — 2026-08-10
+**Status: Complete, verified live** — 2026-08-10
 
 ---
 
@@ -34,6 +34,7 @@ None. `test_results` already existed in the live schema from M0 (`schema.sql`, a
 3. Confirmed results persist and stack newest-first in the UI, matching the `GET /tests` ordering.
 4. Frontend rendered with no console errors; verified via network inspection that `POST /tests` returned 200 with the exact statistic/p-value/conclusion shown on screen.
 5. Test data (and cascaded `test_results` rows) deleted from Neon afterward — production DB is clean.
+6. Pushed to `main` (`74ba0c8`); confirmed the deploy on the actual production URLs (`insight-forge-beta.vercel.app` → `insightforge-api-muyx.onrender.com`) — Render's build installed the new `scipy` dependency and redeployed successfully (checked via a probe on `/tests` returning the custom `dataset_not_found` error envelope instead of FastAPI's generic 404, i.e. confirming the route exists). Uploaded the same 18-row CSV through the live frontend and ran the `age` × `city` ANOVA through the real `StatsTestPanel` UI: statistic 9.4196, p=0.0012 — identical to the local run, rendered correctly with no console errors. Verification row deleted from Neon afterward.
 
 ## 5. Decisions & notes worth remembering
 
@@ -45,9 +46,9 @@ None. `test_results` already existed in the live schema from M0 (`schema.sql`, a
 
 ## 6. Definition of Done (SRS Section 8.1) — checked
 
-- [x] Feature works end-to-end locally against the real Neon database, driven through the actual UI — not yet re-verified on the deployed URL (pending push/redeploy)
+- [x] Feature works end-to-end on the deployed URL, not just locally — verified on both localhost and the live Vercel/Render URLs
 - [x] Edge cases handled: unsupported dtype pairings, same-column selection, missing columns, insufficient/degenerate data (single group, undersized group, zero variance, single-category chi-square)
-- [ ] Code committed with a descriptive message; README updated — pending
+- [x] Code committed with a descriptive message (`74ba0c8`); README updated
 - [x] Automated tests cover the new logic (19 new backend tests, all passing)
 
 ## 7. Next
