@@ -2,7 +2,7 @@
 
 Companion to [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx) (Section 8) and [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md). Records what M5 delivered, how it was verified, and decisions made along the way.
 
-**Status: Complete, verified locally** — 2026-08-10
+**Status: Complete, verified live** — 2026-08-10
 
 ---
 
@@ -38,7 +38,8 @@ Confirmed the root cause directly by querying `model_runs.feature_importance` fr
 1. `pytest` (89 tests total, 23 new) + `ruff` clean, including the two JSONB-ordering regression tests and edge cases: unsupported target type (datetime), no usable features (all-text dataset), fewer than `MIN_ROWS` (10) non-missing target rows, a single-class classification target, missing target values correctly excluded from the row count rather than crashing, missing numeric feature values imputed rather than dropping rows.
 2. Backend run locally against the **real Neon database**, driven through a real browser: uploaded a 40-row synthetic dataset (`age`, `salary`, `city`, `score` [numeric], `bracket` [categorical, derived from `salary`]). Trained a regression model on `score` (R²=0.87) and a classification model on `bracket` (accuracy=1.0, a clean separation by construction) — both through the actual `ModelPanel` UI, both persisted and displayed with correctly ordered feature-importance bars and an accurate plain-language summary after the ordering fix.
 3. Confirmed session isolation still holds (`POST`/`GET /model` 404 for a foreign session, same as every other dataset-scoped endpoint).
-4. Test data deleted from Neon afterward — production DB is clean. **Not yet pushed/redeployed** — production still runs M4 as of this writing.
+4. Test data deleted from Neon afterward — production DB is clean.
+5. Pushed to `main` (`eea0f3b`); confirmed the deploy on the actual production URLs (`insight-forge-beta.vercel.app` → `insightforge-api-muyx.onrender.com`) — Render's build installed `scikit-learn` (a heavier dependency than earlier milestones, so this took longer) and redeployed successfully. Uploaded a fresh 40-row synthetic dataset through the live frontend and trained a regression model on `score` via the real `ModelPanel` UI (R²=0.9319, feature importance rendered as `age` 93% → `salary` 6% → `city` 1%, correctly ordered in both the chart and the plain-language summary). **Re-verified the JSONB-ordering fix specifically against production**: queried the raw `model_runs.feature_importance` row directly in Neon and confirmed storage order was indeed scrambled again (`age, city, salary` — the same bug pattern, reproduced independently in prod), then re-fetched `GET /model` through the browser's real session and confirmed the API still returned the correctly sorted order (`age, salary, city`) despite the scrambled storage — proving the read-time sort fix, not luck, is what's holding production correct. Verification row deleted from Neon afterward.
 
 ## 6. Decisions & notes worth remembering
 
@@ -49,9 +50,9 @@ Confirmed the root cause directly by querying `model_runs.feature_importance` fr
 
 ## 7. Definition of Done (SRS Section 8.1) — checked
 
-- [x] Feature works end-to-end locally against the real Neon database, driven through the actual UI — not yet re-verified on the deployed URL (pending push/redeploy)
+- [x] Feature works end-to-end on the deployed URL, not just locally — verified on both localhost and the live Vercel/Render URLs, including a targeted re-check of the JSONB-ordering fix against production data
 - [x] Edge cases handled: unsupported target type, no usable features, too few rows, single-class target, missing target/feature values, plus the JSONB feature-importance-ordering bug found during verification
-- [ ] Code committed with a descriptive message; README updated — pending
+- [x] Code committed with a descriptive message (`eea0f3b`); README updated
 - [x] Automated tests cover the new logic (23 new backend tests, all passing)
 
 ## 8. Next
