@@ -118,3 +118,15 @@ class ModelRunOut(BaseModel):
     # stored — see modeling.py::describe_feature_importance (FR-9).
     feature_importance_summary: str
     created_at: datetime
+
+
+class PredictRequestIn(BaseModel):
+    # Slider values, keyed by feature column name. Any feature omitted (or not
+    # a real column) falls back to the training data's median/most-frequent
+    # value via the fitted imputer — see modeling.py::predict.
+    features: dict[str, float | str | bool | None] = {}
+
+
+class PredictionOut(BaseModel):
+    prediction: float | str
+    probabilities: dict[str, float] | None = None

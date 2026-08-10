@@ -83,6 +83,11 @@ export interface ModelRun {
   created_at: string;
 }
 
+export interface Prediction {
+  prediction: number | string;
+  probabilities: Record<string, number> | null;
+}
+
 export interface ApiErrorBody {
   error: {
     code: string;

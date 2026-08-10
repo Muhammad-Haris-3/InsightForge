@@ -1,4 +1,4 @@
-"""Baseline model training + feature importance (FR-8, FR-9).
+"""Baseline model training, feature importance, and live prediction (FR-8, FR-9, FR-10).
 
 Target column type decides the task, same auto-selection spirit as
 stats_tests.py's test selection: numeric target -> regression, categorical or
@@ -6,6 +6,17 @@ boolean target -> classification. Datetime/text targets and datetime/text
 features are unsupported (excluded from the feature set, or rejected as a
 target) — a baseline model isn't the right tool for free text or timestamps
 without dedicated feature engineering.
+
+The fitted sklearn model itself is never persisted — only its metrics and
+feature_importance (plain JSON) are stored on ModelRun. `predict()` (FR-10)
+reconstructs the exact same fitted pipeline on demand rather than
+unpickling a stored one: same data, same train/test split, same
+random_state, so it's bit-for-bit identical to what train_model() produced.
+This sidesteps two real problems a stored pickle would introduce — unpickling
+is a known code-execution vector even for data an app wrote itself, and a
+sklearn pickle isn't guaranteed to load after a dependency version bump —
+at the cost of a full refit per prediction request. That's acceptable at the
+scale this project targets (demo-sized CSVs, not production ML serving).
 """
 
 from dataclasses import dataclass
@@ -26,7 +37,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 
 from app.errors import AppError
 
@@ -44,6 +55,146 @@ class ModelOutcome:
     algorithm: str
     metrics: dict[str, float]
     feature_importance: dict[str, float]  # column -> share of total importance, sorted desc, sums to ~1
+
+
+@dataclass
+class PredictionOutcome:
+    prediction: float | str
+    probabilities: dict[str, float] | None  # classification only
+
+
+def _resolve_model_type(target_column: str, target_type: str | None) -> str:
+    if target_type == "numeric":
+        return "regression"
+    if target_type in CATEGORICAL_FEATURE_TYPES:
+        return "classification"
+    raise AppError(
+        400,
+        "unsupported_target_type",
+        f"Column type '{target_type}' isn't supported as a model target — use a numeric column "
+        "(regression) or a categorical/boolean column (classification).",
+    )
+
+
+def _select_feature_columns(
+    df: pd.DataFrame, column_types: dict[str, str], target_column: str
+) -> tuple[list[str], list[str], list[str]]:
+    feature_columns = [c for c in df.columns if c != target_column and column_types.get(c) in USABLE_FEATURE_TYPES]
+    if not feature_columns:
+        raise AppError(
+            400,
+            "insufficient_features",
+            "No usable feature columns remain — datetime and text columns are excluded from modeling.",
+        )
+    numeric_features = [c for c in feature_columns if column_types.get(c) == "numeric"]
+    categorical_features = [c for c in feature_columns if column_types.get(c) in CATEGORICAL_FEATURE_TYPES]
+    return feature_columns, numeric_features, categorical_features
+
+
+def _clean_target(df: pd.DataFrame, target_column: str, model_type: str) -> pd.DataFrame:
+    working = df.copy()
+    if model_type == "regression":
+        working[target_column] = pd.to_numeric(working[target_column], errors="coerce")
+    else:
+        is_missing = working[target_column].isna()
+        # Normalized the same way as feature categories below (see
+        # _stringify_categorical) — case/whitespace differences between the
+        # target's raw CSV text and any downstream comparison shouldn't matter.
+        working[target_column] = working[target_column].astype(str).str.strip().str.lower()
+        working.loc[is_missing, target_column] = np.nan
+
+    working = working.dropna(subset=[target_column])
+    if len(working) < MIN_ROWS:
+        raise AppError(
+            400,
+            "insufficient_data",
+            f"At least {MIN_ROWS} rows with a non-missing '{target_column}' value are needed to train a model.",
+        )
+    if model_type == "classification" and working[target_column].nunique() < 2:
+        raise AppError(
+            400, "insufficient_data", f"'{target_column}' needs at least 2 distinct classes to train a classifier."
+        )
+    return working
+
+
+def _stringify_categorical(X: pd.DataFrame) -> pd.DataFrame:
+    # Normalizes case/whitespace so a category learned from the CSV's raw text
+    # (e.g. "Lahore") reliably matches an equivalent value supplied later at
+    # predict time regardless of how the caller formatted it (JSON string,
+    # different casing, a JS boolean stringified as "True" vs the CSV's own
+    # "true") — otherwise OneHotEncoder(handle_unknown="ignore") would treat
+    # anything not byte-identical to the training text as an unseen category.
+    return X.astype(str).apply(lambda col: col.str.strip().str.lower())
+
+
+def _build_pipeline(model_type: str, numeric_features: list[str], categorical_features: list[str]) -> Pipeline:
+    transformers = []
+    if numeric_features:
+        transformers.append(("num", SimpleImputer(strategy="median"), numeric_features))
+    if categorical_features:
+        transformers.append(
+            (
+                "cat",
+                Pipeline(
+                    [
+                        ("stringify", FunctionTransformer(_stringify_categorical)),
+                        ("impute", SimpleImputer(strategy="most_frequent")),
+                        ("onehot", OneHotEncoder(handle_unknown="ignore")),
+                    ]
+                ),
+                categorical_features,
+            )
+        )
+    preprocessor = ColumnTransformer(transformers)
+
+    model = (
+        RandomForestRegressor(n_estimators=N_ESTIMATORS, random_state=RANDOM_STATE)
+        if model_type == "regression"
+        else RandomForestClassifier(n_estimators=N_ESTIMATORS, random_state=RANDOM_STATE)
+    )
+    return Pipeline([("preprocess", preprocessor), ("model", model)])
+
+
+@dataclass
+class _FittedModel:
+    pipeline: Pipeline
+    model_type: str
+    feature_columns: list[str]
+    numeric_features: list[str]
+    categorical_features: list[str]
+    X_test: pd.DataFrame
+    y_test: pd.Series
+
+
+def _fit(df: pd.DataFrame, column_types: dict[str, str], target_column: str) -> _FittedModel:
+    """Core fit shared by train_model() and predict() — same data, same split,
+    same random_state, so predict() always reconstructs the identical model
+    whose metrics were reported at training time."""
+    if target_column not in df.columns:
+        raise AppError(400, "column_not_found", f"Column '{target_column}' does not exist on this dataset.")
+
+    model_type = _resolve_model_type(target_column, column_types.get(target_column))
+    feature_columns, numeric_features, categorical_features = _select_feature_columns(df, column_types, target_column)
+
+    working = _clean_target(df[[target_column, *feature_columns]], target_column, model_type)
+    X = working[feature_columns]
+    y = working[target_column]
+
+    pipeline = _build_pipeline(model_type, numeric_features, categorical_features)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE)
+    if len(X_train) == 0 or len(X_test) == 0:
+        raise AppError(400, "insufficient_data", "Not enough rows to create a train/test split.")
+
+    pipeline.fit(X_train, y_train)
+    return _FittedModel(
+        pipeline=pipeline,
+        model_type=model_type,
+        feature_columns=feature_columns,
+        numeric_features=numeric_features,
+        categorical_features=categorical_features,
+        X_test=X_test,
+        y_test=y_test,
+    )
 
 
 def _aggregate_feature_importance(
@@ -103,101 +254,58 @@ def describe_feature_importance(feature_importance: dict[str, float], target_col
 
 
 def train_model(df: pd.DataFrame, column_types: dict[str, str], target_column: str) -> ModelOutcome:
-    if target_column not in df.columns:
-        raise AppError(400, "column_not_found", f"Column '{target_column}' does not exist on this dataset.")
+    fitted = _fit(df, column_types, target_column)
+    y_pred = fitted.pipeline.predict(fitted.X_test)
 
-    target_type = column_types.get(target_column)
-    if target_type == "numeric":
-        model_type = "regression"
-    elif target_type in CATEGORICAL_FEATURE_TYPES:
-        model_type = "classification"
+    if fitted.model_type == "regression":
+        metrics = {
+            "r2": round(float(r2_score(fitted.y_test, y_pred)), 4),
+            "mae": round(float(mean_absolute_error(fitted.y_test, y_pred)), 4),
+            "rmse": round(float(mean_squared_error(fitted.y_test, y_pred) ** 0.5), 4),
+        }
     else:
-        raise AppError(
-            400,
-            "unsupported_target_type",
-            f"Column type '{target_type}' isn't supported as a model target — use a numeric column "
-            "(regression) or a categorical/boolean column (classification).",
-        )
+        metrics = {
+            "accuracy": round(float(accuracy_score(fitted.y_test, y_pred)), 4),
+            "precision": round(float(precision_score(fitted.y_test, y_pred, average="weighted", zero_division=0)), 4),
+            "recall": round(float(recall_score(fitted.y_test, y_pred, average="weighted", zero_division=0)), 4),
+            "f1": round(float(f1_score(fitted.y_test, y_pred, average="weighted", zero_division=0)), 4),
+        }
 
-    feature_columns = [
-        c for c in df.columns if c != target_column and column_types.get(c) in USABLE_FEATURE_TYPES
-    ]
-    if not feature_columns:
-        raise AppError(
-            400,
-            "insufficient_features",
-            "No usable feature columns remain — datetime and text columns are excluded from modeling.",
-        )
+    feature_importance = _aggregate_feature_importance(fitted.pipeline, fitted.numeric_features, fitted.categorical_features)
+    return ModelOutcome(
+        model_type=fitted.model_type, algorithm="random_forest", metrics=metrics, feature_importance=feature_importance
+    )
 
-    working = df[[target_column, *feature_columns]].copy()
-    if model_type == "regression":
-        working[target_column] = pd.to_numeric(working[target_column], errors="coerce")
-    else:
-        is_missing = working[target_column].isna()
-        working[target_column] = working[target_column].astype(str)
-        working.loc[is_missing, target_column] = np.nan
 
-    working = working.dropna(subset=[target_column])
-    if len(working) < MIN_ROWS:
-        raise AppError(
-            400,
-            "insufficient_data",
-            f"At least {MIN_ROWS} rows with a non-missing '{target_column}' value are needed to train a model.",
-        )
-    if model_type == "classification" and working[target_column].nunique() < 2:
-        raise AppError(
-            400, "insufficient_data", f"'{target_column}' needs at least 2 distinct classes to train a classifier."
-        )
+def predict(
+    df: pd.DataFrame,
+    column_types: dict[str, str],
+    target_column: str,
+    feature_values: dict[str, object],
+) -> PredictionOutcome:
+    """Live "what-if" prediction (FR-10) — feature_values may be partial;
+    any feature not supplied (or not a real column) falls back to the
+    training data's median/most-frequent value via the fitted imputer."""
+    fitted = _fit(df, column_types, target_column)
 
-    X = working[feature_columns]
-    y = working[target_column]
+    row = {col: feature_values.get(col) for col in fitted.feature_columns}
+    input_df = pd.DataFrame([row], columns=fitted.feature_columns)
+    for col in fitted.numeric_features:
+        input_df[col] = pd.to_numeric(input_df[col], errors="coerce")
 
-    numeric_features = [c for c in feature_columns if column_types.get(c) == "numeric"]
-    categorical_features = [c for c in feature_columns if column_types.get(c) in CATEGORICAL_FEATURE_TYPES]
+    prediction = fitted.pipeline.predict(input_df)[0]
 
-    transformers = []
-    if numeric_features:
-        transformers.append(("num", SimpleImputer(strategy="median"), numeric_features))
-    if categorical_features:
-        transformers.append(
-            (
-                "cat",
-                Pipeline(
-                    [("impute", SimpleImputer(strategy="most_frequent")), ("onehot", OneHotEncoder(handle_unknown="ignore"))]
-                ),
-                categorical_features,
+    probabilities = None
+    if fitted.model_type == "classification":
+        proba = fitted.pipeline.predict_proba(input_df)[0]
+        classes = fitted.pipeline.named_steps["model"].classes_
+        probabilities = dict(
+            sorted(
+                ((str(cls), round(float(p), 4)) for cls, p in zip(classes, proba, strict=True)),
+                key=lambda kv: kv[1],
+                reverse=True,
             )
         )
-    preprocessor = ColumnTransformer(transformers)
 
-    model = (
-        RandomForestRegressor(n_estimators=N_ESTIMATORS, random_state=RANDOM_STATE)
-        if model_type == "regression"
-        else RandomForestClassifier(n_estimators=N_ESTIMATORS, random_state=RANDOM_STATE)
-    )
-    pipeline = Pipeline([("preprocess", preprocessor), ("model", model)])
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE)
-    if len(X_train) == 0 or len(X_test) == 0:
-        raise AppError(400, "insufficient_data", "Not enough rows to create a train/test split.")
-
-    pipeline.fit(X_train, y_train)
-    y_pred = pipeline.predict(X_test)
-
-    if model_type == "regression":
-        metrics = {
-            "r2": round(float(r2_score(y_test, y_pred)), 4),
-            "mae": round(float(mean_absolute_error(y_test, y_pred)), 4),
-            "rmse": round(float(mean_squared_error(y_test, y_pred) ** 0.5), 4),
-        }
-    else:
-        metrics = {
-            "accuracy": round(float(accuracy_score(y_test, y_pred)), 4),
-            "precision": round(float(precision_score(y_test, y_pred, average="weighted", zero_division=0)), 4),
-            "recall": round(float(recall_score(y_test, y_pred, average="weighted", zero_division=0)), 4),
-            "f1": round(float(f1_score(y_test, y_pred, average="weighted", zero_division=0)), 4),
-        }
-
-    feature_importance = _aggregate_feature_importance(pipeline, numeric_features, categorical_features)
-
-    return ModelOutcome(model_type=model_type, algorithm="random_forest", metrics=metrics, feature_importance=feature_importance)
+    result = round(float(prediction), 4) if fitted.model_type == "regression" else str(prediction)
+    return PredictionOutcome(prediction=result, probabilities=probabilities)

@@ -2,7 +2,8 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { ApiErrorBody, ColumnProfile, ModelRun } from "@/lib/types";
+import type { ApiErrorBody, ColumnProfile, EdaReport, ModelRun } from "@/lib/types";
+import { PredictSimulator } from "@/components/PredictSimulator";
 
 const MODEL_TYPE_LABELS: Record<string, string> = { regression: "Regression", classification: "Classification" };
 
@@ -38,7 +39,15 @@ function FeatureImportanceChart({ importance }: { importance: Record<string, num
   );
 }
 
-export function ModelPanel({ datasetId, columns }: { datasetId: string; columns: ColumnProfile[] }) {
+export function ModelPanel({
+  datasetId,
+  columns,
+  eda,
+}: {
+  datasetId: string;
+  columns: ColumnProfile[];
+  eda: EdaReport | null;
+}) {
   const targetableColumns = useMemo(
     () => columns.filter((c) => c.data_type === "numeric" || c.data_type === "categorical" || c.data_type === "boolean"),
     [columns],
@@ -148,6 +157,8 @@ export function ModelPanel({ datasetId, columns }: { datasetId: string; columns:
               {run.feature_importance && Object.keys(run.feature_importance).length > 0 && (
                 <FeatureImportanceChart importance={run.feature_importance} />
               )}
+
+              <PredictSimulator datasetId={datasetId} run={run} columns={columns} eda={eda} />
             </div>
           ))}
         </div>

@@ -17,6 +17,8 @@ from app.schemas import (
     EdaReportOut,
     ModelRequestIn,
     ModelRunOut,
+    PredictionOut,
+    PredictRequestIn,
     QualityReportOut,
     TestRequestIn,
     TestResultOut,
@@ -27,6 +29,7 @@ from app.services.modeling import (
     sort_feature_importance,
     train_model,
 )
+from app.services.modeling import predict as run_prediction
 from app.services.pdf_report import generate_report_pdf
 from app.services.profiling import profile_dataframe, validate_and_parse_csv
 from app.services.stats_tests import select_and_run_test
@@ -253,6 +256,13 @@ def list_model_runs(
     return [_build_model_run_out(r) for r in runs]
 
 
+def _get_owned_model_run(dataset: Dataset, run_id: uuid.UUID, db: DbSession) -> ModelRun:
+    model_run = db.get(ModelRun, run_id)
+    if model_run is None or model_run.dataset_id != dataset.id:
+        raise AppError(404, "model_run_not_found", "No model run found with that ID.")
+    return model_run
+
+
 @router.get("/{dataset_id}/model/{run_id}", response_model=ModelRunOut)
 def get_model_run(
     dataset_id: uuid.UUID,
@@ -261,10 +271,23 @@ def get_model_run(
     db: DbSession = Depends(get_db),
 ) -> ModelRunOut:
     dataset = _get_owned_dataset(dataset_id, session, db)
-    model_run = db.get(ModelRun, run_id)
-    if model_run is None or model_run.dataset_id != dataset.id:
-        raise AppError(404, "model_run_not_found", "No model run found with that ID.")
+    model_run = _get_owned_model_run(dataset, run_id, db)
     return _build_model_run_out(model_run)
+
+
+@router.post("/{dataset_id}/model/{run_id}/predict", response_model=PredictionOut)
+def predict_with_model(
+    dataset_id: uuid.UUID,
+    run_id: uuid.UUID,
+    body: PredictRequestIn,
+    session: SessionModel = Depends(get_current_session),
+    db: DbSession = Depends(get_db),
+) -> PredictionOut:
+    dataset = _get_owned_dataset(dataset_id, session, db)
+    model_run = _get_owned_model_run(dataset, run_id, db)
+    column_types = {c.column_name: c.data_type for c in dataset.columns_profile}
+    outcome = run_prediction(_load_dataframe(dataset), column_types, model_run.target_column, body.features)
+    return PredictionOut(prediction=outcome.prediction, probabilities=outcome.probabilities)
 
 
 @router.get("/{dataset_id}/report/pdf")

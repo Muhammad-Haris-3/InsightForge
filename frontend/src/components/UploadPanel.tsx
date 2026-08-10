@@ -121,7 +121,9 @@ export function UploadPanel() {
       {report && report.columns.length >= 2 && (
         <StatsTestPanel key={`tests-${report.id}`} datasetId={report.id} columns={report.columns} />
       )}
-      {report && <ModelPanel key={`model-${report.id}`} datasetId={report.id} columns={report.columns} />}
+      {report && (
+        <ModelPanel key={`model-${report.id}`} datasetId={report.id} columns={report.columns} eda={report.eda ?? null} />
+      )}
       {report && (
         <ReportExportButton key={`export-${report.id}`} datasetId={report.id} filename={report.original_filename} />
       )}

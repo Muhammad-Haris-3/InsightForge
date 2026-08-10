@@ -228,6 +228,141 @@ def test_get_single_model_run_sorts_feature_importance_regardless_of_storage_ord
     )
 
 
+def test_predict_returns_numeric_prediction_for_regression_run():
+    dataset = _fake_dataset()
+    model_run = ModelRun(
+        id=RUN_ID,
+        dataset_id=DATASET_ID,
+        target_column="score",
+        model_type="regression",
+        algorithm="random_forest",
+        metrics={"r2": 0.9},
+        feature_importance={"age": 0.6, "salary": 0.3, "city": 0.1},
+        created_at=datetime.now(timezone.utc),
+    )
+
+    def get_side_effect(model, obj_id):
+        if model is Dataset:
+            return dataset
+        if model is ModelRun:
+            return model_run
+        return None
+
+    override_db = MagicMock()
+    override_db.get.side_effect = get_side_effect
+    app.dependency_overrides[get_db] = lambda: override_db
+    _use_fixed_session()
+
+    response = client.post(
+        f"/api/datasets/{DATASET_ID}/model/{RUN_ID}/predict",
+        json={"features": {"age": 40, "salary": 60000, "city": "Lahore"}},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["prediction"], (int, float))
+    assert body["probabilities"] is None
+
+
+def test_predict_with_partial_features_still_succeeds():
+    dataset = _fake_dataset()
+    model_run = ModelRun(
+        id=RUN_ID,
+        dataset_id=DATASET_ID,
+        target_column="score",
+        model_type="regression",
+        algorithm="random_forest",
+        metrics={"r2": 0.9},
+        feature_importance={"age": 1.0},
+        created_at=datetime.now(timezone.utc),
+    )
+
+    def get_side_effect(model, obj_id):
+        if model is Dataset:
+            return dataset
+        if model is ModelRun:
+            return model_run
+        return None
+
+    override_db = MagicMock()
+    override_db.get.side_effect = get_side_effect
+    app.dependency_overrides[get_db] = lambda: override_db
+    _use_fixed_session()
+
+    # no "features" key at all — should still succeed via imputation
+    response = client.post(f"/api/datasets/{DATASET_ID}/model/{RUN_ID}/predict", json={})
+
+    assert response.status_code == 200
+    assert isinstance(response.json()["prediction"], (int, float))
+
+
+def test_predict_404_for_wrong_dataset():
+    dataset = _fake_dataset()
+    model_run = ModelRun(
+        id=RUN_ID,
+        dataset_id=uuid.uuid4(),  # belongs to a different dataset
+        target_column="score",
+        model_type="regression",
+        algorithm="random_forest",
+        metrics={"r2": 0.9},
+        feature_importance={"age": 1.0},
+        created_at=datetime.now(timezone.utc),
+    )
+
+    def get_side_effect(model, obj_id):
+        if model is Dataset:
+            return dataset
+        if model is ModelRun:
+            return model_run
+        return None
+
+    override_db = MagicMock()
+    override_db.get.side_effect = get_side_effect
+    app.dependency_overrides[get_db] = lambda: override_db
+    _use_fixed_session()
+
+    response = client.post(
+        f"/api/datasets/{DATASET_ID}/model/{RUN_ID}/predict", json={"features": {"age": 40}}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "model_run_not_found"
+
+
+def test_predict_404_for_foreign_session():
+    other_dataset = _fake_dataset()
+    other_dataset.session_id = uuid.uuid4()
+    model_run = ModelRun(
+        id=RUN_ID,
+        dataset_id=DATASET_ID,
+        target_column="score",
+        model_type="regression",
+        algorithm="random_forest",
+        metrics={"r2": 0.9},
+        feature_importance={"age": 1.0},
+        created_at=datetime.now(timezone.utc),
+    )
+
+    def get_side_effect(model, obj_id):
+        if model is Dataset:
+            return other_dataset
+        if model is ModelRun:
+            return model_run
+        return None
+
+    override_db = MagicMock()
+    override_db.get.side_effect = get_side_effect
+    app.dependency_overrides[get_db] = lambda: override_db
+    _use_fixed_session()
+
+    response = client.post(
+        f"/api/datasets/{DATASET_ID}/model/{RUN_ID}/predict", json={"features": {"age": 40}}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "dataset_not_found"
+
+
 def test_get_single_model_run_404_for_wrong_dataset():
     dataset = _fake_dataset()
     model_run = ModelRun(

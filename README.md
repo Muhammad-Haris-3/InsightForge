@@ -2,7 +2,7 @@
 
 Self-serve, automated data analytics & statistical insight platform. Upload a CSV, get an automated data-quality audit, EDA, statistical testing, and a baseline predictive model with plain-language interpretation — no code required.
 
-Full requirements and design: [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx), [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md), [schema.sql](schema.sql). Milestone progress: [InsightForge_M0_Summary.md](InsightForge_M0_Summary.md), [InsightForge_M1_Summary.md](InsightForge_M1_Summary.md), [InsightForge_M2_Summary.md](InsightForge_M2_Summary.md), [InsightForge_M3_Summary.md](InsightForge_M3_Summary.md), [InsightForge_M4_Summary.md](InsightForge_M4_Summary.md), [InsightForge_M5_Summary.md](InsightForge_M5_Summary.md).
+Full requirements and design: [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx), [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md), [schema.sql](schema.sql). Milestone progress: [InsightForge_M0_Summary.md](InsightForge_M0_Summary.md), [InsightForge_M1_Summary.md](InsightForge_M1_Summary.md), [InsightForge_M2_Summary.md](InsightForge_M2_Summary.md), [InsightForge_M3_Summary.md](InsightForge_M3_Summary.md), [InsightForge_M4_Summary.md](InsightForge_M4_Summary.md), [InsightForge_M5_Summary.md](InsightForge_M5_Summary.md), [InsightForge_M6_Summary.md](InsightForge_M6_Summary.md).
 
 ## Stack
 
@@ -62,4 +62,4 @@ GitHub Actions (`.github/workflows/`) run backend (`ruff` + `pytest`) and fronte
 
 ## Milestones
 
-See [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx) Section 8. Current: **M5 — Modeling (Phase 2)**.
+See [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx) Section 8. Current: **M6 — What-If Simulator** (all Phase-1/Phase-2 milestones complete; M7 — Polish & Docs remains).

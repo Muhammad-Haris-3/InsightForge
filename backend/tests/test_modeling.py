@@ -3,7 +3,12 @@ import pandas as pd
 import pytest
 
 from app.errors import AppError
-from app.services.modeling import MIN_ROWS, describe_feature_importance, train_model
+from app.services.modeling import (
+    MIN_ROWS,
+    describe_feature_importance,
+    predict,
+    train_model,
+)
 
 # --- train_model: FR-8, FR-9 (auto-selected regression/classification + feature importance) ---
 
@@ -118,6 +123,74 @@ def test_numeric_features_missing_values_are_imputed_not_dropped():
     types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
     outcome = train_model(df, types, "score")
     assert outcome.model_type == "regression"
+
+
+# --- predict: FR-10 (live "what-if" prediction) ---
+
+
+def test_predict_regression_returns_numeric_prediction():
+    df = _regression_dataset()
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
+    outcome = predict(df, types, "score", {"age": 40, "salary": 60000, "city": "Lahore"})
+    assert isinstance(outcome.prediction, float)
+    assert outcome.probabilities is None
+
+
+def test_predict_classification_returns_class_and_probabilities():
+    df = _classification_dataset()
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "bracket": "categorical"}
+    outcome = predict(df, types, "bracket", {"age": 50, "salary": 80000, "city": "Lahore"})
+    assert outcome.prediction in {"high", "low"}
+    assert outcome.probabilities is not None
+    assert set(outcome.probabilities) == {"high", "low"}
+    assert pytest.approx(sum(outcome.probabilities.values()), abs=1e-6) == 1.0
+
+
+def test_predict_matches_train_model_reported_metrics_model():
+    # predict() must reconstruct the *same* fitted model train_model() reported
+    # metrics for (same split, same random_state) — not a fresh full-data refit
+    # that would silently diverge from what the UI shows as "this model's accuracy".
+    df = _regression_dataset()
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
+    a = predict(df, types, "score", {"age": 40, "salary": 60000, "city": "Lahore"})
+    b = predict(df, types, "score", {"age": 40, "salary": 60000, "city": "Lahore"})
+    assert a.prediction == b.prediction  # fully deterministic given fixed random_state
+
+
+def test_predict_missing_features_are_imputed_not_rejected():
+    df = _regression_dataset()
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
+    outcome = predict(df, types, "score", {})  # no features supplied at all
+    assert isinstance(outcome.prediction, float)
+
+
+def test_predict_ignores_unknown_feature_keys():
+    df = _regression_dataset()
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
+    outcome = predict(df, types, "score", {"age": 40, "not_a_real_column": "whatever"})
+    assert isinstance(outcome.prediction, float)
+
+
+def test_predict_categorical_feature_matches_regardless_of_case():
+    # Real risk this guards: a category learned from the CSV's raw text (e.g.
+    # "Lahore") must match a value supplied at predict time with different
+    # casing/whitespace, or OneHotEncoder(handle_unknown="ignore") silently
+    # treats it as an unseen category (all-zero encoding) instead of matching.
+    df = _classification_dataset()
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "bracket": "categorical"}
+    lower = predict(df, types, "bracket", {"age": 50, "salary": 80000, "city": "lahore"})
+    upper = predict(df, types, "bracket", {"age": 50, "salary": 80000, "city": "LAHORE  "})
+    mixed = predict(df, types, "bracket", {"age": 50, "salary": 80000, "city": "Lahore"})
+    assert lower.prediction == upper.prediction == mixed.prediction
+    assert lower.probabilities == upper.probabilities == mixed.probabilities
+
+
+def test_predict_invalid_target_raises_same_errors_as_train_model():
+    df = pd.DataFrame({"date": pd.date_range("2024-01-01", periods=15), "age": range(15)})
+    types = {"date": "datetime", "age": "numeric"}
+    with pytest.raises(AppError) as exc:
+        predict(df, types, "date", {"age": 1})
+    assert exc.value.code == "unsupported_target_type"
 
 
 # --- describe_feature_importance: FR-9 (plain-language interpretation) ---
