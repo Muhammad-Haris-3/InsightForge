@@ -2,7 +2,7 @@
 
 Companion to [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx) (Section 8) and [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md). Records what M4 delivered, how it was verified, and decisions made along the way.
 
-**Status: Complete, verified locally** — 2026-08-10
+**Status: Complete, verified live** — 2026-08-10
 
 ---
 
@@ -36,7 +36,8 @@ Found this by deliberately testing `Paragraph("a<b", ...)` in isolation, then co
 1. `pytest` (66 tests total, 14 new) + `ruff` clean, including the two crash-regression cases above plus edge cases: no correlation matrix (single numeric column), no test results yet, missing/null `summary_stats` (an all-missing numeric column).
 2. Backend run locally against the **real Neon database**, driven through a real browser: uploaded an 18-row CSV, ran an ANOVA test through the UI, then clicked "Download PDF Report" — network inspection confirmed a `200 application/pdf` response; the browser correctly triggered a file download via the blob/object-URL path.
 3. **Real bug caught during this session's own verification, not just written up in hindsight**: while re-testing the flow, the browser console logged a React "two children with the same key" warning — `StatsTestPanel` and `ReportExportButton`, both siblings in `UploadPanel`, were keyed with the identical `report.id`. Fixed by prefixing each (`tests-${report.id}`, `export-${report.id}`); re-verified with a fresh upload and an instrumented `console.error` capture that confirmed no key warning fires anymore.
-4. Test data deleted from Neon afterward — production DB is clean. **Not yet pushed/redeployed** — production still runs M3 as of this writing.
+4. Test data deleted from Neon afterward — production DB is clean.
+5. Pushed to `main` (`676f77c`); confirmed the deploy on the actual production URLs (`insight-forge-beta.vercel.app` → `insightforge-api-muyx.onrender.com`) — Render's build installed `reportlab` and redeployed successfully (checked via a probe on `/report/pdf` returning the custom `dataset_not_found` error envelope instead of FastAPI's generic 404). Then independently re-confirmed by the user themselves: uploaded the sample CSV through the live site and downloaded the PDF report directly — correct title, dataset overview, data-quality table, correlation matrix, and an accurate "No statistical tests have been run on this dataset yet" note (no test had been run on that particular upload). That test row is the user's own live-site interaction, not automated verification clutter, so it was left in Neon rather than deleted.
 
 ## 6. Decisions & notes worth remembering
 
@@ -47,9 +48,9 @@ Found this by deliberately testing `Paragraph("a<b", ...)` in isolation, then co
 
 ## 7. Definition of Done (SRS Section 8.1) — checked
 
-- [x] Feature works end-to-end locally against the real Neon database, driven through the actual UI — not yet re-verified on the deployed URL (pending push/redeploy)
+- [x] Feature works end-to-end on the deployed URL, not just locally — verified on both localhost and the live Vercel/Render URLs, plus an independent confirmation from a real user download
 - [x] Edge cases handled: no correlation matrix, no test results yet, missing summary stats, user-controlled text that would otherwise crash PDF generation (filename, conclusion text)
-- [ ] Code committed with a descriptive message; README updated — pending
+- [x] Code committed with a descriptive message (`676f77c`); README updated
 - [x] Automated tests cover the new logic (14 new backend tests, all passing)
 
 ## 8. Next
