@@ -19,6 +19,8 @@ export interface QualityReport {
   duplicate_row_count: number;
   upload_time: string;
   columns: ColumnProfile[];
+  // Populated only on the POST /upload response — see EdaView wiring in UploadPanel.
+  eda?: EdaReport | null;
 }
 
 export interface HistogramBin {

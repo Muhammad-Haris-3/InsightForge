@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { ApiErrorBody, EdaReport, QualityReport } from "@/lib/types";
+import type { ApiErrorBody, QualityReport } from "@/lib/types";
 import { QualityReportView } from "@/components/QualityReportView";
 import { EdaView } from "@/components/EdaView";
 
@@ -13,7 +13,6 @@ export function UploadPanel() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<QualityReport | null>(null);
-  const [eda, setEda] = useState<EdaReport | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -32,7 +31,6 @@ export function UploadPanel() {
     setStatus("uploading");
     setError(null);
     setReport(null);
-    setEda(null);
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const formData = new FormData();
@@ -52,16 +50,12 @@ export function UploadPanel() {
         return;
       }
 
+      // The EDA payload rides along in this same response (see backend
+      // upload_dataset) — no separate cross-site request needed, so the charts
+      // show up even for visitors whose browser blocks third-party cookies.
       const data = (await res.json()) as QualityReport;
       setReport(data);
       setStatus("idle");
-
-      try {
-        const edaRes = await fetch(`${apiUrl}/api/datasets/${data.id}/eda`, { credentials: "include" });
-        if (edaRes.ok) setEda((await edaRes.json()) as EdaReport);
-      } catch {
-        // EDA is a secondary view — the quality report above already succeeded.
-      }
     } catch {
       setStatus("error");
       setError("Could not reach the backend. Please try again.");
@@ -120,7 +114,7 @@ export function UploadPanel() {
       )}
 
       {report && <QualityReportView report={report} />}
-      {eda && <EdaView eda={eda} />}
+      {report?.eda && <EdaView eda={report.eda} />}
     </div>
   );
 }

@@ -28,10 +28,6 @@ class DatasetOut(BaseModel):
     upload_time: datetime
 
 
-class QualityReportOut(DatasetOut):
-    columns: list[ColumnProfileOut]
-
-
 class HistogramBinOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -74,3 +70,12 @@ class EdaReportOut(BaseModel):
     numeric_distributions: list[NumericDistributionOut]
     categorical_frequencies: list[CategoricalFrequencyOut]
     correlation_matrix: CorrelationMatrixOut | None
+
+
+class QualityReportOut(DatasetOut):
+    columns: list[ColumnProfileOut]
+    # Populated only by POST /upload — embedding it here avoids a second
+    # cross-site request (and its cookie dependency) for the first view of a
+    # freshly uploaded dataset. GET /quality-report leaves this null; use
+    # GET /{id}/eda to (re)fetch it for an existing dataset.
+    eda: EdaReportOut | None = None

@@ -38,6 +38,16 @@ def _build_quality_report(dataset: Dataset) -> QualityReportOut:
     )
 
 
+def _build_eda_report(df: pd.DataFrame, dataset: Dataset) -> EdaReportOut:
+    column_types = {c.column_name: c.data_type for c in dataset.columns_profile}
+    payload = build_eda_payload(df, column_types)
+    return EdaReportOut(
+        numeric_distributions=payload.numeric_distributions,
+        categorical_frequencies=payload.categorical_frequencies,
+        correlation_matrix=payload.correlation_matrix,
+    )
+
+
 @router.post("/upload", response_model=QualityReportOut)
 async def upload_dataset(
     file: UploadFile = File(...),
@@ -76,7 +86,13 @@ async def upload_dataset(
 
     db.commit()
     db.refresh(dataset)
-    return _build_quality_report(dataset)
+    result = _build_quality_report(dataset)
+    # Embed the EDA payload directly in the upload response (rather than making
+    # the frontend do a separate GET /eda round trip) — the session cookie is
+    # cross-site (Vercel <-> Render) and some browsers block it by default, which
+    # would otherwise 404 the follow-up call on a visitor's very first upload.
+    result.eda = _build_eda_report(df, dataset)
+    return result
 
 
 @router.get("/{dataset_id}", response_model=DatasetOut)
@@ -108,10 +124,4 @@ def get_eda_report(
     # raw_csv was already validated (type/encoding) at upload time (FR-2), so a
     # plain parse is safe here — no need to re-run validate_and_parse_csv.
     df = pd.read_csv(io.StringIO(dataset.raw_csv.decode("utf-8")))
-    column_types = {c.column_name: c.data_type for c in dataset.columns_profile}
-    payload = build_eda_payload(df, column_types)
-    return EdaReportOut(
-        numeric_distributions=payload.numeric_distributions,
-        categorical_frequencies=payload.categorical_frequencies,
-        correlation_matrix=payload.correlation_matrix,
-    )
+    return _build_eda_report(df, dataset)
