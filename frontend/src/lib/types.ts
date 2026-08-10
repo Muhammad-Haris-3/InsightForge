@@ -55,6 +55,20 @@ export interface EdaReport {
   correlation_matrix: CorrelationMatrix | null;
 }
 
+export type TestType = "t_test" | "chi_square" | "anova";
+
+export interface TestResult {
+  id: string;
+  dataset_id: string;
+  test_type: TestType;
+  column_a: string;
+  column_b: string;
+  statistic: number;
+  p_value: number;
+  conclusion: string;
+  created_at: string;
+}
+
 export interface ApiErrorBody {
   error: {
     code: string;

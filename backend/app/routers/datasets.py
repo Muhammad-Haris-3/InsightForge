@@ -7,11 +7,19 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import ColumnProfile, Dataset
+from app.models import ColumnProfile, Dataset, TestResult
 from app.models import Session as SessionModel
-from app.schemas import ColumnProfileOut, DatasetOut, EdaReportOut, QualityReportOut
+from app.schemas import (
+    ColumnProfileOut,
+    DatasetOut,
+    EdaReportOut,
+    QualityReportOut,
+    TestRequestIn,
+    TestResultOut,
+)
 from app.services.eda import build_eda_payload
 from app.services.profiling import profile_dataframe, validate_and_parse_csv
+from app.services.stats_tests import select_and_run_test
 from app.session import get_current_session
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -46,6 +54,12 @@ def _build_eda_report(df: pd.DataFrame, dataset: Dataset) -> EdaReportOut:
         categorical_frequencies=payload.categorical_frequencies,
         correlation_matrix=payload.correlation_matrix,
     )
+
+
+def _load_dataframe(dataset: Dataset) -> pd.DataFrame:
+    # raw_csv was already validated (type/encoding) at upload time (FR-2), so a
+    # plain parse is safe here — no need to re-run validate_and_parse_csv.
+    return pd.read_csv(io.StringIO(dataset.raw_csv.decode("utf-8")))
 
 
 @router.post("/upload", response_model=QualityReportOut)
@@ -121,7 +135,55 @@ def get_eda_report(
     db: DbSession = Depends(get_db),
 ) -> EdaReportOut:
     dataset = _get_owned_dataset(dataset_id, session, db)
-    # raw_csv was already validated (type/encoding) at upload time (FR-2), so a
-    # plain parse is safe here — no need to re-run validate_and_parse_csv.
-    df = pd.read_csv(io.StringIO(dataset.raw_csv.decode("utf-8")))
-    return _build_eda_report(df, dataset)
+    return _build_eda_report(_load_dataframe(dataset), dataset)
+
+
+@router.post("/{dataset_id}/tests", response_model=TestResultOut)
+def run_test(
+    dataset_id: uuid.UUID,
+    body: TestRequestIn,
+    session: SessionModel = Depends(get_current_session),
+    db: DbSession = Depends(get_db),
+) -> TestResult:
+    dataset = _get_owned_dataset(dataset_id, session, db)
+    df = _load_dataframe(dataset)
+    column_types = {c.column_name: c.data_type for c in dataset.columns_profile}
+    outcome = select_and_run_test(df, column_types, body.column_a, body.column_b)
+
+    test_result = TestResult(
+        dataset_id=dataset.id,
+        test_type=outcome.test_type,
+        column_a=body.column_a,
+        column_b=body.column_b,
+        statistic=outcome.statistic,
+        p_value=outcome.p_value,
+        conclusion=outcome.conclusion,
+    )
+    db.add(test_result)
+    db.commit()
+    db.refresh(test_result)
+    return test_result
+
+
+@router.get("/{dataset_id}/tests", response_model=list[TestResultOut])
+def list_tests(
+    dataset_id: uuid.UUID,
+    session: SessionModel = Depends(get_current_session),
+    db: DbSession = Depends(get_db),
+) -> list[TestResult]:
+    dataset = _get_owned_dataset(dataset_id, session, db)
+    return sorted(dataset.test_results, key=lambda t: t.created_at, reverse=True)
+
+
+@router.get("/{dataset_id}/tests/{test_id}", response_model=TestResultOut)
+def get_test(
+    dataset_id: uuid.UUID,
+    test_id: uuid.UUID,
+    session: SessionModel = Depends(get_current_session),
+    db: DbSession = Depends(get_db),
+) -> TestResult:
+    dataset = _get_owned_dataset(dataset_id, session, db)
+    test_result = db.get(TestResult, test_id)
+    if test_result is None or test_result.dataset_id != dataset.id:
+        raise AppError(404, "test_not_found", "No test result found with that ID.")
+    return test_result

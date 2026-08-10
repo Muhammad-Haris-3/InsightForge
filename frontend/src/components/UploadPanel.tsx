@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import type { ApiErrorBody, QualityReport } from "@/lib/types";
 import { QualityReportView } from "@/components/QualityReportView";
 import { EdaView } from "@/components/EdaView";
+import { StatsTestPanel } from "@/components/StatsTestPanel";
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -115,6 +116,9 @@ export function UploadPanel() {
 
       {report && <QualityReportView report={report} />}
       {report?.eda && <EdaView eda={report.eda} />}
+      {report && report.columns.length >= 2 && (
+        <StatsTestPanel key={report.id} datasetId={report.id} columns={report.columns} />
+      )}
     </div>
   );
 }

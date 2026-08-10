@@ -31,11 +31,6 @@ def override_get_current_session():
     return SessionModel(id=FIXED_SESSION_ID)
 
 
-# Module-level, left set for the rest of the test session — matches the
-# convention in test_health.py / test_upload_validation.py (each subsequent
-# module's assignment just wins over the last; never pop these to "unset",
-# since that would fall through to a real DB connection for later tests).
-app.dependency_overrides[get_current_session] = override_get_current_session
 client = TestClient(app)
 
 
@@ -43,6 +38,10 @@ def test_eda_report_returns_distributions_and_correlation():
     override_db = MagicMock()
     override_db.get.return_value = _fake_dataset()
     app.dependency_overrides[get_db] = lambda: override_db
+    # Set per-test, not at module level — this dict is shared across every test
+    # module in the run, and another file's FIXED_SESSION_ID would otherwise win
+    # depending on collection order (session_id mismatch -> spurious 404).
+    app.dependency_overrides[get_current_session] = override_get_current_session
 
     response = client.get(f"/api/datasets/{DATASET_ID}/eda")
 
@@ -59,6 +58,7 @@ def test_eda_report_404_for_foreign_session():
     override_db = MagicMock()
     override_db.get.return_value = other_dataset
     app.dependency_overrides[get_db] = lambda: override_db
+    app.dependency_overrides[get_current_session] = override_get_current_session
 
     response = client.get(f"/api/datasets/{DATASET_ID}/eda")
 

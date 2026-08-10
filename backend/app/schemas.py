@@ -79,3 +79,22 @@ class QualityReportOut(DatasetOut):
     # freshly uploaded dataset. GET /quality-report leaves this null; use
     # GET /{id}/eda to (re)fetch it for an existing dataset.
     eda: EdaReportOut | None = None
+
+
+class TestRequestIn(BaseModel):
+    column_a: str
+    column_b: str
+
+
+class TestResultOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    dataset_id: uuid.UUID
+    test_type: str
+    column_a: str
+    column_b: str
+    statistic: float
+    p_value: float
+    conclusion: str
+    created_at: datetime
