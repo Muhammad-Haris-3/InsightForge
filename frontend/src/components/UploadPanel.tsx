@@ -5,6 +5,7 @@ import type { ApiErrorBody, QualityReport } from "@/lib/types";
 import { QualityReportView } from "@/components/QualityReportView";
 import { EdaView } from "@/components/EdaView";
 import { StatsTestPanel } from "@/components/StatsTestPanel";
+import { ModelPanel } from "@/components/ModelPanel";
 import { ReportExportButton } from "@/components/ReportExportButton";
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -120,6 +121,7 @@ export function UploadPanel() {
       {report && report.columns.length >= 2 && (
         <StatsTestPanel key={`tests-${report.id}`} datasetId={report.id} columns={report.columns} />
       )}
+      {report && <ModelPanel key={`model-${report.id}`} datasetId={report.id} columns={report.columns} />}
       {report && (
         <ReportExportButton key={`export-${report.id}`} datasetId={report.id} filename={report.original_filename} />
       )}

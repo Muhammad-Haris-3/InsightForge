@@ -9,17 +9,20 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import ColumnProfile, Dataset, TestResult
+from app.models import ColumnProfile, Dataset, ModelRun, TestResult
 from app.models import Session as SessionModel
 from app.schemas import (
     ColumnProfileOut,
     DatasetOut,
     EdaReportOut,
+    ModelRequestIn,
+    ModelRunOut,
     QualityReportOut,
     TestRequestIn,
     TestResultOut,
 )
 from app.services.eda import build_eda_payload
+from app.services.modeling import describe_feature_importance, train_model
 from app.services.pdf_report import generate_report_pdf
 from app.services.profiling import profile_dataframe, validate_and_parse_csv
 from app.services.stats_tests import select_and_run_test
@@ -58,6 +61,27 @@ def _build_eda_report(df: pd.DataFrame, dataset: Dataset) -> EdaReportOut:
         numeric_distributions=payload.numeric_distributions,
         categorical_frequencies=payload.categorical_frequencies,
         correlation_matrix=payload.correlation_matrix,
+    )
+
+
+def _build_model_run_out(model_run: ModelRun) -> ModelRunOut:
+    # Sorted explicitly, not trusted from storage — Postgres JSONB does not
+    # preserve the dict key order train_model originally produced, so a value
+    # read back from model_run.feature_importance can arrive out of order.
+    feature_importance = model_run.feature_importance
+    sorted_importance = (
+        dict(sorted(feature_importance.items(), key=lambda kv: kv[1], reverse=True)) if feature_importance else feature_importance
+    )
+    return ModelRunOut(
+        id=model_run.id,
+        dataset_id=model_run.dataset_id,
+        target_column=model_run.target_column,
+        model_type=model_run.model_type,
+        algorithm=model_run.algorithm,
+        metrics=model_run.metrics,
+        feature_importance=sorted_importance,
+        feature_importance_summary=describe_feature_importance(feature_importance or {}, model_run.target_column),
+        created_at=model_run.created_at,
     )
 
 
@@ -192,6 +216,57 @@ def get_test(
     if test_result is None or test_result.dataset_id != dataset.id:
         raise AppError(404, "test_not_found", "No test result found with that ID.")
     return test_result
+
+
+@router.post("/{dataset_id}/model", response_model=ModelRunOut)
+def train_dataset_model(
+    dataset_id: uuid.UUID,
+    body: ModelRequestIn,
+    session: SessionModel = Depends(get_current_session),
+    db: DbSession = Depends(get_db),
+) -> ModelRunOut:
+    dataset = _get_owned_dataset(dataset_id, session, db)
+    df = _load_dataframe(dataset)
+    column_types = {c.column_name: c.data_type for c in dataset.columns_profile}
+    outcome = train_model(df, column_types, body.target_column)
+
+    model_run = ModelRun(
+        dataset_id=dataset.id,
+        target_column=body.target_column,
+        model_type=outcome.model_type,
+        algorithm=outcome.algorithm,
+        metrics=outcome.metrics,
+        feature_importance=outcome.feature_importance,
+    )
+    db.add(model_run)
+    db.commit()
+    db.refresh(model_run)
+    return _build_model_run_out(model_run)
+
+
+@router.get("/{dataset_id}/model", response_model=list[ModelRunOut])
+def list_model_runs(
+    dataset_id: uuid.UUID,
+    session: SessionModel = Depends(get_current_session),
+    db: DbSession = Depends(get_db),
+) -> list[ModelRunOut]:
+    dataset = _get_owned_dataset(dataset_id, session, db)
+    runs = sorted(dataset.model_runs, key=lambda r: r.created_at, reverse=True)
+    return [_build_model_run_out(r) for r in runs]
+
+
+@router.get("/{dataset_id}/model/{run_id}", response_model=ModelRunOut)
+def get_model_run(
+    dataset_id: uuid.UUID,
+    run_id: uuid.UUID,
+    session: SessionModel = Depends(get_current_session),
+    db: DbSession = Depends(get_db),
+) -> ModelRunOut:
+    dataset = _get_owned_dataset(dataset_id, session, db)
+    model_run = db.get(ModelRun, run_id)
+    if model_run is None or model_run.dataset_id != dataset.id:
+        raise AppError(404, "model_run_not_found", "No model run found with that ID.")
+    return _build_model_run_out(model_run)
 
 
 @router.get("/{dataset_id}/report/pdf")

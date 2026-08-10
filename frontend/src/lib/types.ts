@@ -69,6 +69,20 @@ export interface TestResult {
   created_at: string;
 }
 
+export type ModelType = "regression" | "classification";
+
+export interface ModelRun {
+  id: string;
+  dataset_id: string;
+  target_column: string;
+  model_type: ModelType;
+  algorithm: string;
+  metrics: Record<string, number>;
+  feature_importance: Record<string, number> | null;
+  feature_importance_summary: string;
+  created_at: string;
+}
+
 export interface ApiErrorBody {
   error: {
     code: string;

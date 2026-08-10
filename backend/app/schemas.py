@@ -98,3 +98,23 @@ class TestResultOut(BaseModel):
     p_value: float
     conclusion: str
     created_at: datetime
+
+
+class ModelRequestIn(BaseModel):
+    target_column: str
+
+
+class ModelRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    dataset_id: uuid.UUID
+    target_column: str
+    model_type: str
+    algorithm: str
+    metrics: dict[str, float]
+    feature_importance: dict[str, float] | None
+    # Computed fresh from the persisted feature_importance on every read, not
+    # stored — see modeling.py::describe_feature_importance (FR-9).
+    feature_importance_summary: str
+    created_at: datetime
