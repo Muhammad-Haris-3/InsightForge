@@ -30,20 +30,20 @@ Three-tier: Next.js frontend → FastAPI backend (REST + a pandas/scipy/scikit-l
 ```mermaid
 flowchart LR
     subgraph Client["Browser"]
-        UI["Next.js / React\n(Vercel)"]
+        UI["Next.js / React<br/>Vercel"]
     end
 
-    subgraph Server["FastAPI (Render)"]
-        API["REST API layer\nvalidation · session · routing"]
-        Engine["Analytics engine\npandas · scipy.stats · scikit-learn"]
+    subgraph Server["FastAPI backend (Render)"]
+        API["REST API layer<br/>validation, session, routing"]
+        Engine["Analytics engine<br/>pandas, scipy.stats, scikit-learn"]
         API <--> Engine
     end
 
-    DB[("PostgreSQL\n(Neon)\nraw_csv + all\ngenerated results")]
+    DB[("PostgreSQL / Neon<br/>raw_csv + all generated results")]
 
-    UI -- "HTTPS / JSON\ncookie session" --> API
-    API -- "SQLAlchemy" --> DB
-    Engine -. "re-reads raw_csv\nper request, no cache" .-> DB
+    UI -->|HTTPS JSON, cookie session| API
+    API -->|SQLAlchemy| DB
+    Engine -.->|re-reads raw_csv per request, no cache| DB
 ```
 
 See [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md) for the full schema (5 tables: `sessions`, `datasets`, `columns_profile`, `test_results`, `model_runs`) and REST API spec.
