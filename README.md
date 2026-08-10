@@ -2,7 +2,7 @@
 
 Self-serve, automated data analytics & statistical insight platform. Upload a CSV, get an automated data-quality audit, EDA, statistical testing, and a baseline predictive model with plain-language interpretation — no code required.
 
-Full requirements and design: [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx), [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md), [schema.sql](schema.sql).
+Full requirements and design: [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx), [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md), [schema.sql](schema.sql). Milestone progress: [InsightForge_M0_Summary.md](InsightForge_M0_Summary.md).
 
 ## Stack
 
