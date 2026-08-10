@@ -1,5 +1,7 @@
+import io
 import uuid
 
+import pandas as pd
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session as DbSession
 
@@ -7,7 +9,8 @@ from app.database import get_db
 from app.errors import AppError
 from app.models import ColumnProfile, Dataset
 from app.models import Session as SessionModel
-from app.schemas import ColumnProfileOut, DatasetOut, QualityReportOut
+from app.schemas import ColumnProfileOut, DatasetOut, EdaReportOut, QualityReportOut
+from app.services.eda import build_eda_payload
 from app.services.profiling import profile_dataframe, validate_and_parse_csv
 from app.session import get_current_session
 
@@ -93,3 +96,22 @@ def get_quality_report(
 ) -> QualityReportOut:
     dataset = _get_owned_dataset(dataset_id, session, db)
     return _build_quality_report(dataset)
+
+
+@router.get("/{dataset_id}/eda", response_model=EdaReportOut)
+def get_eda_report(
+    dataset_id: uuid.UUID,
+    session: SessionModel = Depends(get_current_session),
+    db: DbSession = Depends(get_db),
+) -> EdaReportOut:
+    dataset = _get_owned_dataset(dataset_id, session, db)
+    # raw_csv was already validated (type/encoding) at upload time (FR-2), so a
+    # plain parse is safe here — no need to re-run validate_and_parse_csv.
+    df = pd.read_csv(io.StringIO(dataset.raw_csv.decode("utf-8")))
+    column_types = {c.column_name: c.data_type for c in dataset.columns_profile}
+    payload = build_eda_payload(df, column_types)
+    return EdaReportOut(
+        numeric_distributions=payload.numeric_distributions,
+        categorical_frequencies=payload.categorical_frequencies,
+        correlation_matrix=payload.correlation_matrix,
+    )

@@ -30,3 +30,47 @@ class DatasetOut(BaseModel):
 
 class QualityReportOut(DatasetOut):
     columns: list[ColumnProfileOut]
+
+
+class HistogramBinOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    bin_start: float
+    bin_end: float
+    count: int
+
+
+class NumericDistributionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    column_name: str
+    bins: list[HistogramBinOut]
+
+
+class CategoryCountOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    value: str
+    count: int
+
+
+class CategoricalFrequencyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    column_name: str
+    categories: list[CategoryCountOut]
+
+
+class CorrelationMatrixOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    columns: list[str]
+    matrix: list[list[float | None]]
+
+
+class EdaReportOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    numeric_distributions: list[NumericDistributionOut]
+    categorical_frequencies: list[CategoricalFrequencyOut]
+    correlation_matrix: CorrelationMatrixOut | None

@@ -21,6 +21,38 @@ export interface QualityReport {
   columns: ColumnProfile[];
 }
 
+export interface HistogramBin {
+  bin_start: number;
+  bin_end: number;
+  count: number;
+}
+
+export interface NumericDistribution {
+  column_name: string;
+  bins: HistogramBin[];
+}
+
+export interface CategoryCount {
+  value: string;
+  count: number;
+}
+
+export interface CategoricalFrequency {
+  column_name: string;
+  categories: CategoryCount[];
+}
+
+export interface CorrelationMatrix {
+  columns: string[];
+  matrix: (number | null)[][];
+}
+
+export interface EdaReport {
+  numeric_distributions: NumericDistribution[];
+  categorical_frequencies: CategoricalFrequency[];
+  correlation_matrix: CorrelationMatrix | null;
+}
+
 export interface ApiErrorBody {
   error: {
     code: string;
