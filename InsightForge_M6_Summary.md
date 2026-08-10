@@ -2,7 +2,7 @@
 
 Companion to [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx) (Section 8) and [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md). Records what M6 delivered, how it was verified, and decisions made along the way. This was the last milestone in the SRS's Phase-2 (Should-Have) scope.
 
-**Status: Complete, verified locally** — 2026-08-10
+**Status: Complete, verified live** — 2026-08-10
 
 ---
 
@@ -50,7 +50,8 @@ Fixed by normalizing every categorical/boolean value — both the training data 
 2. Backend run locally against the **real Neon database**, driven through a real browser: uploaded a 40-row synthetic dataset, trained a regression model on a numeric target — the simulator rendered sliders (bounded to the column's real min/max, defaulted to its mean) and a category dropdown, with an initial baseline prediction shown on mount.
 3. **Actually moved a slider and confirmed the live update, not just that the UI rendered**: dragged the dominant-feature (92% importance) slider from its mean to the column's max — prediction jumped from 26,642.92 to 34,079.86, the expected direction and rough magnitude given that feature's correlation with the target. Changed the category dropdown next — prediction shifted by a small amount, consistent with that feature's much smaller (1%) importance. Confirmed via network inspection that both changes triggered a real `POST .../predict` (200 OK), debounced rather than firing on every intermediate drag value.
 4. Trained a second model on a categorical target (classification) on the same dataset and confirmed probabilities render correctly, sum to 100%, and — after the fix in Section 5 — display with capitalization matching the rest of the UI.
-5. Test data deleted from Neon afterward — production DB is clean. **Not yet pushed/redeployed** — production still runs the M4 PDF addendum as of this writing.
+5. Test data deleted from Neon afterward — production DB is clean.
+6. Pushed to `main` (`15cd78a`); confirmed the deploy on the actual production URLs. Render's backend redeployed first — confirmed via the `/predict` route returning the custom `dataset_not_found` envelope for a bogus ID rather than FastAPI's generic 404. **Vercel's frontend lagged behind by a few minutes**: the first check found none of the deployed `<script src>` bundles contained the string `"What-If Simulator"`, so the live site was still serving the pre-M6 build even though the backend was ready — trained a model at that point and confirmed the simulator section simply didn't render (no error, just absent, since the old bundle has no such component). Waited, re-checked the bundle contents, confirmed the new build was live, then re-ran the full flow: uploaded a fresh 40-row dataset, trained a regression model on `score` (R²=0.9240), confirmed the simulator rendered with sliders bounded to real min/max and an initial prediction (25,154.01). Moved the dominant-feature (94% importance) age slider to its max — prediction jumped to 34,054.52, same expected direction/magnitude as the local check. Verification rows deleted from Neon afterward.
 
 ## 7. Decisions & notes worth remembering
 
@@ -58,12 +59,13 @@ Fixed by normalizing every categorical/boolean value — both the training data 
 - **Sliders are bounded to the training data's observed min/max**, not an arbitrary padded range — matches the "what-if" framing (exploring within the space the model actually learned from) rather than inviting extrapolation the model has no basis for.
 - **Debounce, not `onMouseUp`/`onTouchEnd`** — a timer-based debounce (400ms after the last change) handles mouse drag, touch drag, and keyboard-arrow slider adjustment uniformly without needing separate handlers per input modality, at the cost of a small fixed delay after the user stops interacting.
 - **This finding continues M5's JSONB lesson but is a different failure mode** — M5 was about *order* surviving a round trip; this one is about *exact-value matching* surviving a round trip through an ML encoder. Both are instances of the same underlying discipline: don't assume data arrives back in the shape you last saw it.
+- **Frontend and backend deploys aren't atomic — verify both independently, not just "the push succeeded."** Render redeployed faster than Vercel this time; for a few minutes production had a working `/predict` API behind a UI that didn't know to call it. Checking only the backend route (as prior milestones' verification did, since they had no new frontend-only-visible surface tied to a specific new component) would have missed this. Fetching the deployed JS bundles and searching for a string unique to the new component is a cheap, reliable way to confirm a *frontend* deploy actually landed, distinct from confirming the backend did.
 
 ## 8. Definition of Done (SRS Section 8.1) — checked
 
-- [x] Feature works end-to-end locally against the real Neon database, driven through the actual UI — not yet re-verified on the deployed URL (pending push/redeploy)
+- [x] Feature works end-to-end on the deployed URL, not just locally — verified on both localhost and the live Vercel/Render URLs (including catching and waiting out a frontend/backend deploy-timing gap, see Section 7)
 - [x] Edge cases handled: missing/unknown feature keys, empty request body, case/whitespace mismatches in categorical input, unsupported target types (inherited from `train_model`'s validation)
-- [ ] Code committed with a descriptive message; README updated — pending
+- [x] Code committed with a descriptive message (`15cd78a`); README updated
 - [x] Automated tests cover the new logic (12 new backend tests, all passing)
 
 ## 9. Next
