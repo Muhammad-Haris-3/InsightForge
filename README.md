@@ -136,6 +136,6 @@ Every milestone was verified against the real production database and, once push
 | M4 | Reporting — PDF export | FR-7 | ✅ [Summary](InsightForge_M4_Summary.md) |
 | M5 | Modeling — baseline model + feature importance | FR-8, FR-9 | ✅ [Summary](InsightForge_M5_Summary.md) |
 | M6 | What-If Simulator — live prediction sliders | FR-10 | ✅ [Summary](InsightForge_M6_Summary.md) |
-| M7 | Polish & Docs — README, architecture diagram, tests | NFR set | ✅ this document |
+| M7 | Polish & Docs — README, architecture diagram, tests | NFR set | ✅ [Summary](InsightForge_M7_Summary.md) |
 
 All SRS Phase-1 (MVP) and Phase-2 (Should-Have) functional requirements are complete and verified live.
