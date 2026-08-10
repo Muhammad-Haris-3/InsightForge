@@ -2,7 +2,7 @@
 
 Self-serve, automated data analytics & statistical insight platform. Upload a CSV, get an automated data-quality audit, EDA, statistical testing, and a baseline predictive model with plain-language interpretation — no code required.
 
-Full requirements and design: [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx), [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md), [schema.sql](schema.sql). Milestone progress: [InsightForge_M0_Summary.md](InsightForge_M0_Summary.md).
+Full requirements and design: [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx), [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md), [schema.sql](schema.sql). Milestone progress: [InsightForge_M0_Summary.md](InsightForge_M0_Summary.md), [InsightForge_M1_Summary.md](InsightForge_M1_Summary.md).
 
 ## Stack
 
@@ -44,6 +44,12 @@ Create a free [Neon](https://neon.tech) project, then apply the schema:
 psql "$DATABASE_URL" -f schema.sql
 ```
 
+Existing databases provisioned before M1 also need the migration in [`migrations/`](migrations):
+
+```bash
+psql "$DATABASE_URL" -f migrations/001_add_duplicate_row_count.sql
+```
+
 ## Deployment
 
 - **Backend (Render)** — connect this repo, Render auto-detects [render.yaml](render.yaml) (Docker, `backend/`). Set `DATABASE_URL` (Neon connection string) and `CORS_ORIGINS` (deployed frontend URL) in the Render dashboard.
@@ -56,4 +62,4 @@ GitHub Actions (`.github/workflows/`) run backend (`ruff` + `pytest`) and fronte
 
 ## Milestones
 
-See [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx) Section 8. Current: **M0 — Setup**.
+See [InsightForge_SRS_v1.0.docx](InsightForge_SRS_v1.0.docx) Section 8. Current: **M1 — Ingestion & QA**.

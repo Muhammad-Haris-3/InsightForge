@@ -28,12 +28,14 @@ class Dataset(Base):
     column_count: Mapped[int] = mapped_column(nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(nullable=False)
     raw_csv: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    duplicate_row_count: Mapped[int] = mapped_column(default=0)
     upload_time: Mapped[datetime] = mapped_column(server_default=func.now())
 
     __table_args__ = (
         CheckConstraint("row_count >= 0", name="ck_datasets_row_count"),
         CheckConstraint("column_count >= 0", name="ck_datasets_column_count"),
         CheckConstraint("file_size_bytes > 0 AND file_size_bytes <= 10485760", name="ck_datasets_file_size"),
+        CheckConstraint("duplicate_row_count >= 0", name="ck_datasets_duplicate_row_count"),
     )
 
     session: Mapped["Session"] = relationship(back_populates="datasets")

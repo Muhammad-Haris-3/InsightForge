@@ -23,6 +23,7 @@ CREATE TABLE datasets (
     column_count        integer NOT NULL CHECK (column_count >= 0),
     file_size_bytes     integer NOT NULL CHECK (file_size_bytes > 0 AND file_size_bytes <= 10485760), -- 10MB cap, NFR
     raw_csv             bytea NOT NULL, -- stored in Postgres, not disk — see Design Phase doc Section 1.1
+    duplicate_row_count integer NOT NULL DEFAULT 0 CHECK (duplicate_row_count >= 0), -- dataset-level QA fact (FR-3); added in M1
     upload_time         timestamptz NOT NULL DEFAULT now()
 );
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { UploadPanel } from "@/components/UploadPanel";
 
 type ApiStatus = "checking" | "ok" | "unreachable";
 
@@ -15,28 +16,32 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-zinc-50 px-6 text-center dark:bg-black">
-      <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
-        InsightForge
-      </h1>
-      <p className="max-w-md text-zinc-600 dark:text-zinc-400">
-        Upload a CSV, get an automated data-quality audit, EDA, statistical
-        testing, and a baseline model — no code required.
-      </p>
-      <p className="text-sm text-zinc-500 dark:text-zinc-500">
-        Backend API:{" "}
-        <span
-          className={
-            apiStatus === "ok"
-              ? "text-emerald-600 dark:text-emerald-400"
-              : apiStatus === "unreachable"
-                ? "text-red-600 dark:text-red-400"
-                : "text-zinc-500"
-          }
-        >
-          {apiStatus}
-        </span>
-      </p>
+    <div className="flex flex-1 flex-col items-center gap-8 bg-zinc-50 px-6 py-12 dark:bg-black">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
+          InsightForge
+        </h1>
+        <p className="max-w-md text-zinc-600 dark:text-zinc-400">
+          Upload a CSV, get an automated data-quality audit, EDA, statistical
+          testing, and a baseline model — no code required.
+        </p>
+        <p className="text-sm text-zinc-500 dark:text-zinc-500">
+          Backend API:{" "}
+          <span
+            className={
+              apiStatus === "ok"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : apiStatus === "unreachable"
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-zinc-500"
+            }
+          >
+            {apiStatus}
+          </span>
+        </p>
+      </div>
+
+      <UploadPanel />
     </div>
   );
 }

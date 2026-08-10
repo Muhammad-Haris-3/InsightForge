@@ -53,6 +53,7 @@ One row per uploaded file.
 | column_count      | int                    |                                   |
 | file_size_bytes   | int                    | enforced ≤ 10MB at upload         |
 | raw_csv           | bytea                  | the actual file content — see 1.1 |
+| duplicate_row_count | int                  | fully-duplicated row count (FR-3) — added in M1, computed once at upload |
 | upload_time       | timestamp              | default now()                     |
 
 ### 2.3 `columns_profile`
