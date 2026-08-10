@@ -71,18 +71,27 @@ def _aggregate_feature_importance(
     return dict(sorted(normalized.items(), key=lambda kv: kv[1], reverse=True))
 
 
-def describe_feature_importance(feature_importance: dict[str, float], target_column: str) -> str:
-    """Plain-language summary of the top predictors (FR-9).
+def sort_feature_importance(feature_importance: dict[str, float] | None) -> dict[str, float]:
+    """Sort by value descending — never trust dict order after a JSONB round-trip.
 
-    Sorts explicitly rather than trusting insertion order — Postgres JSONB
-    does not preserve the original key order of a dict once it round-trips
-    through the DB, so `feature_importance` here may arrive out of order even
-    though `train_model` built it sorted.
+    Postgres JSONB does not preserve the original key order of a dict once it
+    round-trips through the DB, so a `feature_importance` value read back from
+    a `ModelRun` may arrive out of order even though `train_model` built it
+    sorted. Every place that displays or ranks it (API responses, the PDF
+    report, the plain-language summary below) must re-sort at read time.
     """
     if not feature_importance:
+        return {}
+    return dict(sorted(feature_importance.items(), key=lambda kv: kv[1], reverse=True))
+
+
+def describe_feature_importance(feature_importance: dict[str, float], target_column: str) -> str:
+    """Plain-language summary of the top predictors (FR-9)."""
+    sorted_importance = sort_feature_importance(feature_importance)
+    if not sorted_importance:
         return f"No feature importance is available for predicting '{target_column}'."
 
-    top = sorted(feature_importance.items(), key=lambda kv: kv[1], reverse=True)[:3]
+    top = list(sorted_importance.items())[:3]
     parts = [f"'{name}' ({value * 100:.0f}%)" for name, value in top]
     if len(parts) == 1:
         joined = parts[0]

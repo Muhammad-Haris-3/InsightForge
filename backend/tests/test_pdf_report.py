@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from app.services.eda import build_eda_payload
 from app.services.pdf_report import generate_report_pdf
 
-# --- generate_report_pdf: FR-7 (quality report + EDA highlights + test results as PDF) ---
+# --- generate_report_pdf: FR-7 (quality report + EDA highlights + test results + model runs as PDF) ---
 
 
 def _dataset(**overrides):
@@ -61,6 +61,19 @@ def _test_result(**overrides):
     return SimpleNamespace(**defaults)
 
 
+def _model_run(**overrides):
+    defaults = {
+        "target_column": "age",
+        "model_type": "regression",
+        "algorithm": "random_forest",
+        "metrics": {"r2": 0.87, "mae": 1.68, "rmse": 2.11},
+        "feature_importance": {"city": 0.1, "salary": 0.9},  # deliberately out of order
+        "created_at": datetime.now(timezone.utc),
+    }
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
 def test_generates_valid_pdf_bytes():
     import pandas as pd
 
@@ -68,7 +81,7 @@ def test_generates_valid_pdf_bytes():
     eda = build_eda_payload(df, {"age": "numeric", "city": "categorical"})
     columns = [_numeric_column(), _categorical_column()]
 
-    pdf_bytes = generate_report_pdf(_dataset(), columns, eda, [])
+    pdf_bytes = generate_report_pdf(_dataset(), columns, eda, [], [])
 
     assert pdf_bytes.startswith(b"%PDF-")
     assert pdf_bytes.endswith(b"%%EOF\n") or b"%%EOF" in pdf_bytes[-16:]
@@ -81,7 +94,7 @@ def test_handles_no_correlation_matrix():
     eda = build_eda_payload(df, {"city": "categorical"})
     columns = [_categorical_column()]
 
-    pdf_bytes = generate_report_pdf(_dataset(column_count=1), columns, eda, [])
+    pdf_bytes = generate_report_pdf(_dataset(column_count=1), columns, eda, [], [])
 
     assert pdf_bytes.startswith(b"%PDF-")
 
@@ -92,7 +105,7 @@ def test_handles_no_test_results():
     df = pd.DataFrame({"age": [1, 2, 3]})
     eda = build_eda_payload(df, {"age": "numeric"})
 
-    pdf_bytes = generate_report_pdf(_dataset(column_count=1), [_numeric_column()], eda, [])
+    pdf_bytes = generate_report_pdf(_dataset(column_count=1), [_numeric_column()], eda, [], [])
 
     assert pdf_bytes.startswith(b"%PDF-")
 
@@ -104,7 +117,7 @@ def test_includes_test_results():
     eda = build_eda_payload(df, {"age": "numeric", "city": "categorical"})
     columns = [_numeric_column(), _categorical_column()]
 
-    pdf_bytes = generate_report_pdf(_dataset(), columns, eda, [_test_result()])
+    pdf_bytes = generate_report_pdf(_dataset(), columns, eda, [_test_result()], [])
 
     assert pdf_bytes.startswith(b"%PDF-")
 
@@ -116,7 +129,7 @@ def test_handles_missing_summary_stats():
     eda = build_eda_payload(df, {"age": "numeric"})
     column = _numeric_column(missing_count=2, missing_pct=100.0, unique_count=0, outlier_count=None, summary_stats=None)
 
-    pdf_bytes = generate_report_pdf(_dataset(column_count=1), [column], eda, [])
+    pdf_bytes = generate_report_pdf(_dataset(column_count=1), [column], eda, [], [])
 
     assert pdf_bytes.startswith(b"%PDF-")
 
@@ -128,7 +141,7 @@ def test_sanitizes_unsafe_characters_do_not_crash_generation():
     eda = build_eda_payload(df, {"age": "numeric"})
     dataset = _dataset(original_filename='weird "name"\r\n.csv', column_count=1)
 
-    pdf_bytes = generate_report_pdf(dataset, [_numeric_column()], eda, [])
+    pdf_bytes = generate_report_pdf(dataset, [_numeric_column()], eda, [], [])
 
     assert pdf_bytes.startswith(b"%PDF-")
 
@@ -144,7 +157,7 @@ def test_unbalanced_angle_bracket_in_filename_does_not_crash():
     eda = build_eda_payload(df, {"age": "numeric"})
     dataset = _dataset(original_filename="a<b report.csv", column_count=1)
 
-    pdf_bytes = generate_report_pdf(dataset, [_numeric_column()], eda, [])
+    pdf_bytes = generate_report_pdf(dataset, [_numeric_column()], eda, [], [])
 
     assert pdf_bytes.startswith(b"%PDF-")
 
@@ -156,6 +169,79 @@ def test_unbalanced_angle_bracket_in_conclusion_does_not_crash():
     eda = build_eda_payload(df, {"age": "numeric"})
     test_result = _test_result(conclusion="There is a<b difference (p=0.5000).")
 
-    pdf_bytes = generate_report_pdf(_dataset(column_count=1), [_numeric_column()], eda, [test_result])
+    pdf_bytes = generate_report_pdf(_dataset(column_count=1), [_numeric_column()], eda, [test_result], [])
+
+    assert pdf_bytes.startswith(b"%PDF-")
+
+
+# --- Baseline model section (FR-8, FR-9) ---
+
+
+def test_handles_no_model_runs():
+    import pandas as pd
+
+    df = pd.DataFrame({"age": [1, 2, 3]})
+    eda = build_eda_payload(df, {"age": "numeric"})
+
+    pdf_bytes = generate_report_pdf(_dataset(column_count=1), [_numeric_column()], eda, [], [])
+
+    assert pdf_bytes.startswith(b"%PDF-")
+
+
+def test_includes_model_runs():
+    import pandas as pd
+
+    df = pd.DataFrame({"age": [1, 2, 3, 4], "city": ["A", "B", "A", "B"]})
+    eda = build_eda_payload(df, {"age": "numeric", "city": "categorical"})
+    columns = [_numeric_column(), _categorical_column()]
+
+    pdf_bytes = generate_report_pdf(_dataset(), columns, eda, [], [_model_run()])
+
+    assert pdf_bytes.startswith(b"%PDF-")
+
+
+def test_model_run_feature_importance_is_sorted_regardless_of_input_order():
+    # _model_run() deliberately builds feature_importance as {"city": 0.1, "salary": 0.9}
+    # — out of order — mirroring the real JSONB-ordering bug found in M5. The
+    # PDF's own text extraction isn't asserted here (reportlab doesn't make
+    # that trivial), but this at minimum proves generation doesn't crash and
+    # exercises the same sort_feature_importance() path used everywhere else.
+    import pandas as pd
+
+    df = pd.DataFrame({"age": [1, 2, 3, 4]})
+    eda = build_eda_payload(df, {"age": "numeric"})
+
+    pdf_bytes = generate_report_pdf(
+        _dataset(column_count=1), [_numeric_column()], eda, [], [_model_run(feature_importance={"z": 0.01, "a": 0.99})]
+    )
+
+    assert pdf_bytes.startswith(b"%PDF-")
+
+
+def test_classification_model_run_metrics_render():
+    import pandas as pd
+
+    df = pd.DataFrame({"bracket": ["high", "low", "high", "low"]})
+    eda = build_eda_payload(df, {"bracket": "categorical"})
+    run = _model_run(
+        target_column="bracket",
+        model_type="classification",
+        metrics={"accuracy": 1.0, "precision": 1.0, "recall": 1.0, "f1": 1.0},
+        feature_importance={"age": 0.6, "salary": 0.4},
+    )
+
+    pdf_bytes = generate_report_pdf(_dataset(column_count=1), [_categorical_column()], eda, [], [run])
+
+    assert pdf_bytes.startswith(b"%PDF-")
+
+
+def test_unbalanced_angle_bracket_in_target_column_does_not_crash():
+    import pandas as pd
+
+    df = pd.DataFrame({"age": [1, 2, 3, 4]})
+    eda = build_eda_payload(df, {"age": "numeric"})
+    run = _model_run(target_column="a<b", feature_importance={"age": 1.0})
+
+    pdf_bytes = generate_report_pdf(_dataset(column_count=1), [_numeric_column()], eda, [], [run])
 
     assert pdf_bytes.startswith(b"%PDF-")

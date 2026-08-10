@@ -22,7 +22,11 @@ from app.schemas import (
     TestResultOut,
 )
 from app.services.eda import build_eda_payload
-from app.services.modeling import describe_feature_importance, train_model
+from app.services.modeling import (
+    describe_feature_importance,
+    sort_feature_importance,
+    train_model,
+)
 from app.services.pdf_report import generate_report_pdf
 from app.services.profiling import profile_dataframe, validate_and_parse_csv
 from app.services.stats_tests import select_and_run_test
@@ -65,13 +69,6 @@ def _build_eda_report(df: pd.DataFrame, dataset: Dataset) -> EdaReportOut:
 
 
 def _build_model_run_out(model_run: ModelRun) -> ModelRunOut:
-    # Sorted explicitly, not trusted from storage — Postgres JSONB does not
-    # preserve the dict key order train_model originally produced, so a value
-    # read back from model_run.feature_importance can arrive out of order.
-    feature_importance = model_run.feature_importance
-    sorted_importance = (
-        dict(sorted(feature_importance.items(), key=lambda kv: kv[1], reverse=True)) if feature_importance else feature_importance
-    )
     return ModelRunOut(
         id=model_run.id,
         dataset_id=model_run.dataset_id,
@@ -79,8 +76,9 @@ def _build_model_run_out(model_run: ModelRun) -> ModelRunOut:
         model_type=model_run.model_type,
         algorithm=model_run.algorithm,
         metrics=model_run.metrics,
-        feature_importance=sorted_importance,
-        feature_importance_summary=describe_feature_importance(feature_importance or {}, model_run.target_column),
+        # None stays None (nullable in the schema); only sort a populated dict.
+        feature_importance=sort_feature_importance(model_run.feature_importance) if model_run.feature_importance else model_run.feature_importance,
+        feature_importance_summary=describe_feature_importance(model_run.feature_importance or {}, model_run.target_column),
         created_at=model_run.created_at,
     )
 
@@ -278,7 +276,9 @@ def get_report_pdf(
     dataset = _get_owned_dataset(dataset_id, session, db)
     column_types = {c.column_name: c.data_type for c in dataset.columns_profile}
     eda_payload = build_eda_payload(_load_dataframe(dataset), column_types)
-    pdf_bytes = generate_report_pdf(dataset, dataset.columns_profile, eda_payload, dataset.test_results)
+    pdf_bytes = generate_report_pdf(
+        dataset, dataset.columns_profile, eda_payload, dataset.test_results, dataset.model_runs
+    )
 
     stem = dataset.original_filename.rsplit(".", 1)[0]
     # original_filename is user-supplied — strip anything but a safe character

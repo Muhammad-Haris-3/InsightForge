@@ -47,6 +47,7 @@ def _fake_dataset(**overrides):
             ),
         ],
         "test_results": [],
+        "model_runs": [],
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -88,6 +89,26 @@ def test_report_pdf_sanitizes_unsafe_filename_in_header():
     assert response.status_code == 200
     disposition = response.headers["content-disposition"]
     assert "\r" not in disposition and "\n" not in disposition and '"' not in disposition.split("filename=")[1][1:-1]
+
+
+def test_report_pdf_includes_model_runs():
+    model_run = SimpleNamespace(
+        target_column="age",
+        model_type="regression",
+        algorithm="random_forest",
+        metrics={"r2": 0.87, "mae": 1.68, "rmse": 2.11},
+        feature_importance={"city": 0.1, "salary": 0.9},
+        created_at=datetime.now(timezone.utc),
+    )
+    override_db = MagicMock()
+    override_db.get.return_value = _fake_dataset(model_runs=[model_run])
+    app.dependency_overrides[get_db] = lambda: override_db
+    _use_fixed_session()
+
+    response = client.get(f"/api/datasets/{DATASET_ID}/report/pdf")
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF-")
 
 
 def test_report_pdf_404_for_foreign_session():

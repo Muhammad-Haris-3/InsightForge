@@ -1,4 +1,4 @@
-"""PDF summary export: quality report + EDA highlights + test results (FR-7)."""
+"""PDF summary export: quality report + EDA highlights + test results + model runs (FR-7)."""
 
 import io
 from datetime import datetime, timezone
@@ -10,14 +10,29 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from app.models import ColumnProfile, Dataset, TestResult
+from app.models import ColumnProfile, Dataset, ModelRun, TestResult
 from app.services.eda import EdaPayload
+from app.services.modeling import describe_feature_importance, sort_feature_importance
 
 HEADER_BG = colors.HexColor("#18181b")  # zinc-900
 ROW_ALT_BG = colors.HexColor("#f4f4f5")  # zinc-100
 BORDER_COLOR = colors.HexColor("#d4d4d8")  # zinc-300
 
 TEST_TYPE_LABELS = {"t_test": "t-test", "chi_square": "Chi-square", "anova": "ANOVA"}
+MODEL_TYPE_LABELS = {"regression": "Regression", "classification": "Classification"}
+METRIC_LABELS = {
+    "r2": "R²",
+    "mae": "MAE",
+    "rmse": "RMSE",
+    "accuracy": "Accuracy",
+    "precision": "Precision",
+    "recall": "Recall",
+    "f1": "F1",
+}
+
+
+def _format_metrics(metrics: dict[str, float]) -> str:
+    return ", ".join(f"{METRIC_LABELS.get(k, k)}={v:.4f}" for k, v in metrics.items())
 
 
 def _column_summary(col: ColumnProfile) -> str:
@@ -57,6 +72,7 @@ def generate_report_pdf(
     columns: list[ColumnProfile],
     eda: EdaPayload,
     test_results: list[TestResult],
+    model_runs: list[ModelRun],
 ) -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -150,6 +166,35 @@ def generate_report_pdf(
         test_table = Table(test_rows, hAlign="LEFT", repeatRows=1, colWidths=[55, 60, 60, 55, 50, 170])
         test_table.setStyle(_table_style())
         story.append(test_table)
+
+    # --- Baseline model runs (FR-8, FR-9) ---
+    story.append(Paragraph("Baseline Model", heading_style))
+    if not model_runs:
+        story.append(Paragraph("No baseline model has been trained on this dataset yet.", body_style))
+    else:
+        model_rows = [["Target", "Type", "Algorithm", "Metrics", "Strongest Predictors"]]
+        for run in sorted(model_runs, key=lambda r: r.created_at, reverse=True):
+            sorted_importance = sort_feature_importance(run.feature_importance)
+            summary = describe_feature_importance(sorted_importance, run.target_column)
+            model_rows.append(
+                [
+                    run.target_column,
+                    MODEL_TYPE_LABELS.get(run.model_type, run.model_type),
+                    run.algorithm,
+                    # Paragraph, not a plain string — a classification run's
+                    # "Accuracy=…, Precision=…, Recall=…, F1=…" is too long for
+                    # a fixed column width and a plain Table cell doesn't wrap,
+                    # it just overflows and overlaps the next column's text.
+                    Paragraph(_format_metrics(run.metrics), body_style),
+                    # escape() — target/feature column names are user-controlled
+                    # (from the CSV's own headers), same Paragraph markup risk
+                    # as the test conclusions above.
+                    Paragraph(escape(summary), body_style),
+                ]
+            )
+        model_table = Table(model_rows, hAlign="LEFT", repeatRows=1, colWidths=[55, 60, 65, 130, 135])
+        model_table.setStyle(_table_style())
+        story.append(model_table)
 
     doc.build(story)
     return buffer.getvalue()

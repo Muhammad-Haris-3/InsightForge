@@ -57,6 +57,16 @@ Found this by deliberately testing `Paragraph("a<b", ...)` in isolation, then co
 
 **M5 — Modeling (Phase 2)**: baseline regression/classification model + feature importance (FR-8, FR-9), per SRS Section 8.
 
+## 9. Addendum (v1.1): Baseline Model section added after M5
+
+The original scope here (Section 1) was "quality report + EDA highlights + test results" per the Design Phase doc's REST spec — written before M5 (Modeling) existed, so `model_runs` was never part of the PDF. Once M5 shipped, this was a real gap (not a defect in what M4 was built to do, but a stale scope now that baseline models are part of the analysis) — flagged by the user directly: *"those baseline model are also not available when user download the report as a pdf, is this according to our SRS or is this a bug or something?"*
+
+Added a fifth "Baseline Model" section (target, type, algorithm, metrics, plain-language "strongest predictors" summary — same content as `ModelPanel`/`GET /model`) or a "no model trained yet" note. `sort_feature_importance` was extracted out of the router into `modeling.py` as a shared helper, so the PDF, the API response, and the plain-language summary all sort the same JSONB-order-unsafe data the same way (see the M5 summary's JSONB write-up for why this matters) instead of a third copy of that logic.
+
+**A real layout bug was caught during manual PDF verification, not a code-review guess**: the "Metrics" column was a plain string, not wrapped in `Paragraph` like the other long-text columns — `Table` cells don't wrap plain strings, so a classification run's `"Accuracy=…, Precision=…, Recall=…, F1=…"` overflowed its column and visually overlapped the adjacent "Strongest Predictors" text. Caught by literally downloading and reading the generated PDF (not just checking `pdf_bytes.startswith(b"%PDF-")`, which a purely automated test suite would have missed entirely since reportlab doesn't raise on overflow — it just silently draws over the next column). Fixed by wrapping the metrics string in `Paragraph` too, same as the conclusion/summary columns, plus adjusted column widths. Verified by regenerating and re-reading the PDF for both a regression run (3 metrics) and a classification run (4 metrics, the longer case) — both wrap cleanly with no overlap.
+
+Also fixed the `ReportExportButton` blurb text, which still said "quality report, EDA correlation matrix, and any statistical tests" with no mention of models.
+
 ---
 
 ## Document Control
@@ -64,3 +74,4 @@ Found this by deliberately testing `Paragraph("a<b", ...)` in isolation, then co
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | August 10, 2026 | M4 built and locally verified |
+| 1.1 | August 10, 2026 | Added a Baseline Model section to the PDF (post-M5 gap, flagged by the user); fixed a metrics-column text-overlap layout bug found during manual PDF verification |

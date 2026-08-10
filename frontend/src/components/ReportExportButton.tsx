@@ -46,8 +46,8 @@ export function ReportExportButton({ datasetId, filename }: { datasetId: string;
     <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
       <h2 className="font-semibold text-black dark:text-zinc-50">Export</h2>
       <p className="text-sm text-zinc-500">
-        Download a PDF summary of the data-quality report, EDA correlation matrix, and any statistical tests run so
-        far.
+        Download a PDF summary of the data-quality report, EDA correlation matrix, and any statistical tests or
+        baseline models run so far.
       </p>
       <button
         onClick={() => void download()}
