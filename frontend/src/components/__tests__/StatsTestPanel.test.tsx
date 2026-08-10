@@ -63,7 +63,8 @@ describe("StatsTestPanel", () => {
     await user.click(screen.getByRole("button", { name: "Run Test" }));
 
     await waitFor(() => expect(screen.getByText("ANOVA")).toBeInTheDocument());
-    expect(screen.getByText(/statistic 9\.4196, p-value 0\.0012/)).toBeInTheDocument();
+    expect(screen.getByText("9.4196")).toBeInTheDocument();
+    expect(screen.getByText("0.0012")).toBeInTheDocument();
     expect(
       screen.getByText("There is a statistically significant difference in 'age' across the 4 groups of 'city'."),
     ).toBeInTheDocument();

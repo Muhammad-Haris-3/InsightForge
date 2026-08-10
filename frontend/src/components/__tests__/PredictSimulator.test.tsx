@@ -74,7 +74,7 @@ describe("PredictSimulator", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockJsonResponse(true, { prediction: 34079.86, probabilities: null })));
     render(<PredictSimulator datasetId="d1" run={regressionRun()} columns={columns} eda={eda} />);
 
-    await waitFor(() => expect(screen.getByText(/Predicted score:/)).toBeInTheDocument(), WAIT_OPTS);
+    await waitFor(() => expect(screen.getByText("Predicted score")).toBeInTheDocument(), WAIT_OPTS);
     expect(screen.getByText("34,079.86")).toBeInTheDocument();
 
     const [url, options] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -104,7 +104,8 @@ describe("PredictSimulator", () => {
     render(<PredictSimulator datasetId="d1" run={regressionRun({ target_column: "city" })} columns={columns} eda={eda} />);
 
     await waitFor(() => expect(screen.getByText("Lahore", { selector: "span.font-semibold" })).toBeInTheDocument(), WAIT_OPTS);
-    expect(screen.getByText(/Lahore 60%, Karachi 40%/)).toBeInTheDocument();
+    expect(screen.getByText("Lahore 60%")).toBeInTheDocument();
+    expect(screen.getByText("Karachi 40%")).toBeInTheDocument();
   }, 10000);
 
   it("shows the server's error message on a non-ok prediction response", async () => {

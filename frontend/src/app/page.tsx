@@ -5,6 +5,31 @@ import { UploadPanel } from "@/components/UploadPanel";
 
 type ApiStatus = "checking" | "ok" | "unreachable";
 
+function LogoMark() {
+  return (
+    <svg viewBox="0 0 32 32" className="h-9 w-9" fill="none" aria-hidden="true">
+      <rect width="32" height="32" rx="9" className="fill-emerald-600 dark:fill-emerald-500" />
+      <path
+        d="M9 20.5 13.5 12l4 6 3-4.5 3.5 5.5"
+        stroke="white"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function StatusDot({ status }: { status: ApiStatus }) {
+  const color =
+    status === "ok"
+      ? "bg-emerald-500"
+      : status === "unreachable"
+        ? "bg-red-500"
+        : "bg-zinc-400 animate-pulse";
+  return <span className={`inline-block h-1.5 w-1.5 rounded-full ${color}`} />;
+}
+
 export default function Home() {
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
 
@@ -16,28 +41,21 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex flex-1 flex-col items-center gap-8 bg-zinc-50 px-6 py-12 dark:bg-black">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
-          InsightForge
-        </h1>
-        <p className="max-w-md text-zinc-600 dark:text-zinc-400">
-          Upload a CSV, get an automated data-quality audit, EDA, statistical
-          testing, and a baseline model — no code required.
+    <div className="hero-glow flex flex-1 flex-col items-center gap-10 px-6 py-16 sm:py-20">
+      <div className="flex flex-col items-center gap-5 text-center">
+        <div className="flex items-center gap-3">
+          <LogoMark />
+          <h1 className="text-4xl font-semibold tracking-tight text-black sm:text-5xl dark:text-zinc-50">
+            InsightForge
+          </h1>
+        </div>
+        <p className="max-w-lg text-balance text-base text-zinc-600 sm:text-lg dark:text-zinc-400">
+          Upload a CSV. Get an automated data-quality audit, exploratory analysis, statistical testing, and a
+          baseline model with plain-language results — no code required.
         </p>
-        <p className="text-sm text-zinc-500 dark:text-zinc-500">
-          Backend API:{" "}
-          <span
-            className={
-              apiStatus === "ok"
-                ? "text-emerald-600 dark:text-emerald-400"
-                : apiStatus === "unreachable"
-                  ? "text-red-600 dark:text-red-400"
-                  : "text-zinc-500"
-            }
-          >
-            {apiStatus}
-          </span>
+        <p className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white/60 px-3 py-1 text-xs text-zinc-500 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-500">
+          <StatusDot status={apiStatus} />
+          Backend API: {apiStatus}
         </p>
       </div>
 

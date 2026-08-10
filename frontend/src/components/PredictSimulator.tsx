@@ -5,6 +5,9 @@ import type { ApiErrorBody, ColumnProfile, EdaReport, ModelRun, Prediction } fro
 
 const DEBOUNCE_MS = 400;
 
+const SELECT_STYLES =
+  "rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-black shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50";
+
 function numericStats(col: ColumnProfile): { min: number; max: number; mean: number } | null {
   const s = col.summary_stats as Record<string, number | null> | null;
   if (!s || s.min == null || s.max == null) return null;
@@ -89,11 +92,16 @@ export function PredictSimulator({
   if (featureColumns.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <h4 className="text-sm font-semibold text-black dark:text-zinc-50">What-If Simulator</h4>
+    <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex items-center gap-1.5">
+        <svg viewBox="0 0 20 20" className="h-4 w-4 text-emerald-600 dark:text-emerald-400" fill="currentColor" aria-hidden="true">
+          <path d="M10 2a1 1 0 0 1 1 1v1.06a6.5 6.5 0 0 1 5.94 5.94H18a1 1 0 1 1 0 2h-1.06A6.5 6.5 0 0 1 11 17.94V19a1 1 0 1 1-2 0v-1.06A6.5 6.5 0 0 1 3.06 12H2a1 1 0 1 1 0-2h1.06A6.5 6.5 0 0 1 9 4.06V3a1 1 0 0 1 1-1Zm0 4.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z" />
+        </svg>
+        <h4 className="text-sm font-semibold text-black dark:text-zinc-50">What-If Simulator</h4>
+      </div>
       <p className="text-xs text-zinc-500">Adjust the inputs and see this model&apos;s live prediction update.</p>
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3.5">
         {featureColumns.map((col) => {
           if (col.data_type === "numeric") {
             const stats = numericStats(col);
@@ -102,10 +110,12 @@ export function PredictSimulator({
             const step = max > min ? Math.max((max - min) / 100, 0.01) : 1;
             const current = Number(values[col.column_name] ?? min);
             return (
-              <label key={col.column_name} className="flex flex-col gap-1 text-xs">
-                <span className="flex justify-between text-zinc-500">
-                  <span>{col.column_name}</span>
-                  <span className="font-medium text-black dark:text-zinc-50">{current}</span>
+              <label key={col.column_name} className="flex flex-col gap-1.5 text-xs">
+                <span className="flex justify-between">
+                  <span className="text-zinc-500">{col.column_name}</span>
+                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium tabular-nums text-black dark:bg-zinc-800 dark:text-zinc-50">
+                    {current}
+                  </span>
                 </span>
                 <input
                   type="range"
@@ -114,7 +124,7 @@ export function PredictSimulator({
                   step={step}
                   value={current}
                   onChange={(e) => setValues((prev) => ({ ...prev, [col.column_name]: Number(e.target.value) }))}
-                  className="accent-emerald-600"
+                  className="h-1.5 cursor-pointer accent-emerald-600"
                 />
               </label>
             );
@@ -122,12 +132,12 @@ export function PredictSimulator({
 
           const options = categoricalOptions(eda, col.column_name);
           return (
-            <label key={col.column_name} className="flex flex-col gap-1 text-xs">
+            <label key={col.column_name} className="flex flex-col gap-1.5 text-xs">
               <span className="text-zinc-500">{col.column_name}</span>
               <select
                 value={String(values[col.column_name] ?? "")}
                 onChange={(e) => setValues((prev) => ({ ...prev, [col.column_name]: e.target.value }))}
-                className="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm text-black dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                className={SELECT_STYLES}
               >
                 {options.map((opt) => (
                   <option key={opt} value={opt}>
@@ -147,20 +157,26 @@ export function PredictSimulator({
       )}
 
       {prediction && (
-        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
-          <span className="text-zinc-600 dark:text-zinc-400">Predicted {run.target_column}: </span>
-          <span className={`font-semibold text-black dark:text-zinc-50 ${isPredicting ? "opacity-50" : ""}`}>
+        <div className="flex flex-col gap-2 rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white px-3.5 py-3 dark:border-emerald-900 dark:from-emerald-950/30 dark:to-zinc-900">
+          <div className={`flex items-baseline gap-1.5 transition-opacity ${isPredicting ? "opacity-50" : ""}`}>
+            <span className="text-xs text-zinc-500">Predicted {run.target_column}</span>
+          </div>
+          <span className={`text-xl font-semibold text-black transition-opacity dark:text-zinc-50 ${isPredicting ? "opacity-50" : ""}`}>
             {typeof prediction.prediction === "number"
               ? prediction.prediction.toLocaleString()
               : displayLabel(prediction.prediction)}
           </span>
           {prediction.probabilities && (
-            <span className="text-zinc-500">
-              {" "}
-              ({Object.entries(prediction.probabilities)
-                .map(([label, p]) => `${displayLabel(label)} ${(p * 100).toFixed(0)}%`)
-                .join(", ")})
-            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(prediction.probabilities).map(([label, p]) => (
+                <span
+                  key={label}
+                  className="rounded-full bg-white px-2 py-0.5 text-xs text-zinc-600 shadow-sm dark:bg-zinc-800 dark:text-zinc-300"
+                >
+                  {displayLabel(label)} {(p * 100).toFixed(0)}%
+                </span>
+              ))}
+            </div>
           )}
         </div>
       )}

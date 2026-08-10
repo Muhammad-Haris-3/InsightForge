@@ -85,7 +85,7 @@ export function UploadPanel() {
   );
 
   return (
-    <div className="flex w-full max-w-3xl flex-col gap-6">
+    <div className="flex w-full max-w-3xl flex-col gap-8">
       <div
         role="button"
         tabIndex={0}
@@ -97,13 +97,40 @@ export function UploadPanel() {
         }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={onDrop}
-        className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-12 text-center transition-colors ${
+        className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-14 text-center shadow-sm transition-all duration-150 ${
           isDragOver
-            ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20"
-            : "border-zinc-300 bg-white hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600"
+            ? "scale-[1.01] border-emerald-500 bg-emerald-50 shadow-emerald-500/10 dark:bg-emerald-950/20"
+            : "border-zinc-300 bg-white hover:border-emerald-400 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-emerald-600"
         }`}
       >
         <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFileChange} />
+        <div
+          className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${
+            isDragOver ? "bg-emerald-100 dark:bg-emerald-900/40" : "bg-zinc-100 dark:bg-zinc-800"
+          }`}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className={`h-6 w-6 ${isDragOver ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-500"}`}
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 16V4m0 0 4 4m-4-4-4 4"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
         <p className="font-medium text-black dark:text-zinc-50">
           {status === "uploading" ? "Uploading…" : "Drop a CSV here, or click to browse"}
         </p>
@@ -111,7 +138,14 @@ export function UploadPanel() {
       </div>
 
       {error && (
-        <p className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+        <p className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+          <svg viewBox="0 0 20 20" className="mt-0.5 h-4 w-4 flex-shrink-0" fill="currentColor" aria-hidden="true">
+            <path
+              fillRule="evenodd"
+              d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.63-1.516 2.63H3.72c-1.347 0-2.189-1.463-1.515-2.63L8.485 2.495ZM10 6a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 6Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+              clipRule="evenodd"
+            />
+          </svg>
           {error}
         </p>
       )}
