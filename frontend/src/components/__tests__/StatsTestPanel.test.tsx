@@ -9,8 +9,18 @@ const columns: ColumnProfile[] = [
   { column_name: "city", data_type: "categorical", missing_count: 0, missing_pct: 0, unique_count: 3, outlier_count: null, summary_stats: null },
 ];
 
+// status and text() round out the mock to the parts of a real Response the api
+// client reads — it parses a failed response's body via text(), so that a
+// non-JSON error page can be told apart from an unreachable backend.
 function mockFetchOnce(response: { ok: boolean; json: () => Promise<unknown> }) {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValueOnce({
+      status: response.ok ? 200 : 400,
+      text: async () => JSON.stringify(await response.json()),
+      ...response,
+    }),
+  );
 }
 
 beforeEach(() => {
@@ -88,13 +98,13 @@ describe("StatsTestPanel", () => {
   });
 
   it("shows a generic error when the network request throws", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("network down")));
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
     const user = userEvent.setup();
     render(<StatsTestPanel datasetId="d1" columns={columns} />);
 
     await user.click(screen.getByRole("button", { name: "Run Test" }));
 
-    await waitFor(() => expect(screen.getByText("Could not reach the backend. Please try again.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Could not reach the backend. Check your connection and try again.")).toBeInTheDocument());
   });
 
   it("prepends new results so the newest run shows first", async () => {

@@ -26,6 +26,14 @@ function buildReport(overrides: Partial<QualityReport> = {}): QualityReport {
   };
 }
 
+// The api client reads a failed response through status + text(), so that a body
+// that isn't the backend's JSON envelope (Render's HTML error page during a cold
+// start) is recognised rather than misreported as an unreachable backend.
+function errorResponse(status: number, error: { code: string; message: string }) {
+  const body = { error };
+  return { ok: false, status, json: async () => body, text: async () => JSON.stringify(body) };
+}
+
 function getFileInput(): HTMLInputElement {
   const input = document.querySelector('input[type="file"]');
   if (!input) throw new Error("file input not found");
@@ -115,7 +123,7 @@ describe("UploadPanel", () => {
   it("shows the server's error message on a non-ok upload response", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValueOnce({ ok: false, json: async () => ({ error: { code: "malformed_csv", message: "Could not parse CSV." } }) }),
+      vi.fn().mockResolvedValueOnce(errorResponse(400, { code: "malformed_csv", message: "Could not parse CSV." })),
     );
     const user = userEvent.setup();
     render(<UploadPanel />);
@@ -127,13 +135,13 @@ describe("UploadPanel", () => {
   });
 
   it("shows a generic error when the network request throws", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("down")));
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
     const user = userEvent.setup();
     render(<UploadPanel />);
 
     await user.upload(getFileInput(), fileOfSize("sample.csv", 10));
 
-    await waitFor(() => expect(screen.getByText("Could not reach the backend. Please try again.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Could not reach the backend. Check your connection and try again.")).toBeInTheDocument());
   });
 
   it("clears the previous report and error when a new upload starts", async () => {
@@ -141,7 +149,7 @@ describe("UploadPanel", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValueOnce({ ok: false, json: async () => ({ error: { code: "malformed_csv", message: "Bad file." } }) })
+        .mockResolvedValueOnce(errorResponse(400, { code: "malformed_csv", message: "Bad file." }))
         .mockResolvedValueOnce({ ok: true, json: async () => buildReport({ original_filename: "second.csv" }) }),
     );
     const user = userEvent.setup();

@@ -18,6 +18,19 @@ HEADER_BG = colors.HexColor("#18181b")  # zinc-900
 ROW_ALT_BG = colors.HexColor("#f4f4f5")  # zinc-100
 BORDER_COLOR = colors.HexColor("#d4d4d8")  # zinc-300
 
+# Correlation matrix layout. The matrix is the one table whose width grows with
+# the dataset — n numeric columns means n+1 table columns — so unlike every other
+# table here it will run off the page unless it is measured and split. These are
+# the pieces of that measurement; see _correlation_story().
+CORR_LABEL_WIDTH = 118  # row-label column ("12. some_column_name"), wraps as a Paragraph
+CORR_CELL_WIDTH = 24  # one value cell: "-0.42" at 7pt is ~18pt plus 2pt padding a side
+CORR_FONT_SIZE = 7
+
+# Same diverging pair the web heatmap uses (EdaView.tsx), so a printed matrix and
+# the on-screen one read as the same artifact.
+CORR_POSITIVE = colors.HexColor("#60a5fa")  # blue
+CORR_NEGATIVE = colors.HexColor("#f87171")  # red
+
 TEST_TYPE_LABELS = {"t_test": "t-test", "chi_square": "Chi-square", "anova": "ANOVA"}
 MODEL_TYPE_LABELS = {"regression": "Regression", "classification": "Classification"}
 METRIC_LABELS = {
@@ -65,6 +78,134 @@ def _table_style(header_rows: int = 1) -> TableStyle:
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]
     )
+
+
+def _correlation_colors(value: float | None) -> tuple[colors.Color, colors.Color]:
+    """Cell fill and text color for one correlation value, mirroring the web heatmap:
+    blue for positive, red for negative, saturation tracking |value|."""
+    if value is None:
+        return colors.white, colors.black
+    intensity = min(abs(value), 1.0)
+    target = CORR_POSITIVE if value >= 0 else CORR_NEGATIVE
+    fill = colors.Color(
+        1 - (1 - target.red) * intensity,
+        1 - (1 - target.green) * intensity,
+        1 - (1 - target.blue) * intensity,
+    )
+    # Flip to white text once the fill is dark enough that black stops reading.
+    return fill, (colors.white if intensity > 0.65 else colors.black)
+
+
+def _correlation_block_table(
+    all_columns: list[str],
+    matrix: list[list[float | None]],
+    start: int,
+    end: int,
+    label_style: ParagraphStyle,
+    header_style: ParagraphStyle,
+) -> Table:
+    """Build one horizontal slice of the matrix: every row, but only columns [start:end).
+
+    The header cells carry the column's *index* rather than its name. Names are far
+    wider than a value cell, so naming both axes would force either a cell wide
+    enough for the longest header (a handful of columns per page) or truncation.
+    Indexing the top axis keeps a value cell value-sized, and the row labels — which
+    are spelled out in full — supply the number-to-name key for both axes, since a
+    correlation matrix is symmetric and both axes list the same columns.
+    """
+    header = [""] + [Paragraph(f"<b>{i + 1}</b>", header_style) for i in range(start, end)]
+    rows = [header]
+    for row_index, row_values in enumerate(matrix):
+        label = escape(all_columns[row_index])
+        cells = [f"{v:.2f}" if v is not None else "-" for v in row_values[start:end]]
+        rows.append([Paragraph(f"{row_index + 1}. {label}", label_style), *cells])
+
+    table = Table(
+        rows,
+        hAlign="LEFT",
+        repeatRows=1,
+        colWidths=[CORR_LABEL_WIDTH] + [CORR_CELL_WIDTH] * (end - start),
+    )
+
+    style = [
+        ("BACKGROUND", (0, 0), (-1, 0), HEADER_BG),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), CORR_FONT_SIZE),
+        ("GRID", (0, 0), (-1, -1), 0.25, BORDER_COLOR),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        # Tighter than _table_style's 6pt — the padding alone would otherwise be
+        # half the width of a value cell.
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]
+
+    for row_index, row_values in enumerate(matrix):
+        for offset, value in enumerate(row_values[start:end]):
+            fill, text_color = _correlation_colors(value)
+            cell = (offset + 1, row_index + 1)
+            style.append(("BACKGROUND", cell, cell, fill))
+            style.append(("TEXTCOLOR", cell, cell, text_color))
+
+    table.setStyle(TableStyle(style))
+    return table
+
+
+def _correlation_story(corr, available_width: float, body_style: ParagraphStyle) -> list:
+    """Render the correlation matrix, splitting it across as many tables as it takes.
+
+    A wide dataset produces a matrix wider than the page. ReportLab does not reflow
+    an over-wide table — it just runs the surplus columns off the edge of the paper,
+    which is why columns went missing from the export. So the columns are sliced into
+    blocks that each fit the frame, and every block repeats the full row labels.
+    """
+    max_cells = max(1, int((available_width - CORR_LABEL_WIDTH) // CORR_CELL_WIDTH))
+    total = len(corr.columns)
+
+    label_style = ParagraphStyle(
+        "CorrLabel", fontName="Helvetica", fontSize=CORR_FONT_SIZE, leading=CORR_FONT_SIZE + 1.5
+    )
+    header_style = ParagraphStyle(
+        "CorrHeader",
+        fontName="Helvetica-Bold",
+        fontSize=CORR_FONT_SIZE,
+        leading=CORR_FONT_SIZE + 1.5,
+        textColor=colors.white,
+        alignment=1,  # centered
+    )
+
+    story: list = []
+    if total > max_cells:
+        story.append(
+            Paragraph(
+                f"{total} numeric columns — too wide for one page, so the matrix is split into "
+                f"blocks of up to {max_cells} columns below. Columns are numbered along the top; "
+                "the numbered row labels are the key (the matrix is symmetric, so the same "
+                "numbering applies to both axes).",
+                body_style,
+            )
+        )
+    else:
+        story.append(
+            Paragraph(
+                "Columns are numbered along the top — the numbered row labels are the key.",
+                body_style,
+            )
+        )
+
+    for start in range(0, total, max_cells):
+        end = min(start + max_cells, total)
+        if total > max_cells:
+            story.append(Spacer(1, 8))
+            story.append(Paragraph(f"<b>Columns {start + 1}–{end} of {total}</b>", body_style))
+            story.append(Spacer(1, 4))
+        story.append(
+            _correlation_block_table(corr.columns, corr.matrix, start, end, label_style, header_style)
+        )
+
+    return story
 
 
 def generate_report_pdf(
@@ -118,15 +259,21 @@ def generate_report_pdf(
         missing = f"{col.missing_count} ({col.missing_pct}%)" if col.missing_count else "0"
         quality_rows.append(
             [
-                col.column_name,
+                # Paragraphs (and explicit colWidths below) so a long column name or
+                # summary wraps inside its cell. Plain strings in a Table cell don't
+                # wrap — they overflow into the neighbouring column and, on a wide
+                # enough row, off the edge of the page entirely.
+                Paragraph(escape(col.column_name), body_style),
                 col.data_type,
                 missing,
                 str(col.unique_count),
                 str(col.outlier_count) if col.outlier_count is not None else "-",
-                _column_summary(col),
+                Paragraph(escape(_column_summary(col)), body_style),
             ]
         )
-    quality_table = Table(quality_rows, hAlign="LEFT", repeatRows=1)
+    quality_table = Table(
+        quality_rows, hAlign="LEFT", repeatRows=1, colWidths=[110, 52, 58, 45, 45, 210]
+    )
     quality_table.setStyle(_table_style())
     story.append(quality_table)
 
@@ -135,13 +282,7 @@ def generate_report_pdf(
     if eda.correlation_matrix is None:
         story.append(Paragraph("Fewer than 2 numeric columns — no correlation matrix to show.", body_style))
     else:
-        corr = eda.correlation_matrix
-        corr_rows = [[""] + corr.columns]
-        for row_name, row_values in zip(corr.columns, corr.matrix, strict=True):
-            corr_rows.append([row_name] + [f"{v:.2f}" if v is not None else "-" for v in row_values])
-        corr_table = Table(corr_rows, hAlign="LEFT")
-        corr_table.setStyle(_table_style())
-        story.append(corr_table)
+        story.extend(_correlation_story(eda.correlation_matrix, doc.width, body_style))
 
     # --- Statistical test results (FR-5, FR-6) ---
     story.append(Paragraph("Statistical Test Results", heading_style))

@@ -2,7 +2,8 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { ApiErrorBody, ColumnProfile, EdaReport, ModelRun } from "@/lib/types";
+import type { ColumnProfile, EdaReport, ModelRun } from "@/lib/types";
+import { apiFetch, toErrorMessage } from "@/lib/api";
 import { PredictSimulator } from "@/components/PredictSimulator";
 
 const MODEL_TYPE_LABELS: Record<string, string> = { regression: "Regression", classification: "Classification" };
@@ -74,32 +75,28 @@ export function ModelPanel({
   const [runs, setRuns] = useState<ModelRun[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isTraining, setIsTraining] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const trainModel = useCallback(async () => {
     setError(null);
     setIsTraining(true);
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    setIsRetrying(false);
 
     try {
-      const res = await fetch(`${apiUrl}/api/datasets/${datasetId}/model`, {
+      const res = await apiFetch(`/api/datasets/${datasetId}/model`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ target_column: targetColumn }),
+        onRetry: () => setIsRetrying(true),
       });
-
-      if (!res.ok) {
-        const body = (await res.json()) as ApiErrorBody;
-        setError(body.error?.message ?? "Couldn't train a model on this column.");
-        return;
-      }
 
       const run = (await res.json()) as ModelRun;
       setRuns((prev) => [run, ...prev]);
-    } catch {
-      setError("Could not reach the backend. Please try again.");
+    } catch (err) {
+      setError(toErrorMessage(err, "Couldn't train a model on this column."));
     } finally {
       setIsTraining(false);
+      setIsRetrying(false);
     }
   }, [datasetId, targetColumn]);
 
@@ -132,7 +129,7 @@ export function ModelPanel({
           disabled={isTraining || !targetColumn}
           className="btn-primary rounded-xl px-5 py-2.5 text-sm font-medium"
         >
-          {isTraining ? "Training…" : "Train Model"}
+          {isTraining ? (isRetrying ? "Waking the backend…" : "Training…") : "Train Model"}
         </button>
       </div>
 

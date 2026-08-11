@@ -10,8 +10,12 @@ const columns: ColumnProfile[] = [
   { column_name: "notes", data_type: "text", missing_count: 0, missing_pct: 0, unique_count: 40, outlier_count: null, summary_stats: null },
 ];
 
-function mockJsonResponse(ok: boolean, body: unknown) {
-  return { ok, json: async () => body };
+// Mirrors the parts of a real Response the api client touches. It reads the error
+// body with text() + JSON.parse rather than json(), so that a non-JSON body (the
+// HTML error page Render's router serves during a cold start) is recognised as
+// "the proxy answered" instead of being mistaken for a dead connection.
+function mockJsonResponse(ok: boolean, body: unknown, status = ok ? 200 : 400) {
+  return { ok, status, json: async () => body, text: async () => JSON.stringify(body) };
 }
 
 beforeEach(() => {
@@ -98,12 +102,12 @@ describe("ModelPanel", () => {
   });
 
   it("shows a generic error when the network request throws", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("down")));
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
     const user = userEvent.setup();
     render(<ModelPanel datasetId="d1" columns={columns} eda={null} />);
 
     await user.click(screen.getByRole("button", { name: "Train Model" }));
 
-    await waitFor(() => expect(screen.getByText("Could not reach the backend. Please try again.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Could not reach the backend. Check your connection and try again.")).toBeInTheDocument());
   });
 });

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { UploadPanel } from "@/components/UploadPanel";
+import { apiFetch } from "@/lib/api";
 
-type ApiStatus = "checking" | "ok" | "unreachable";
+type ApiStatus = "checking" | "waking" | "ok" | "unreachable";
 
 function LogoMark() {
   return (
@@ -26,13 +27,22 @@ function LogoMark() {
   );
 }
 
+const STATUS_LABELS: Record<ApiStatus, string> = {
+  checking: "checking",
+  waking: "waking up (free tier cold start, ~1 min)",
+  ok: "ok",
+  unreachable: "unreachable",
+};
+
 function StatusDot({ status }: { status: ApiStatus }) {
   const color =
     status === "ok"
       ? "bg-emerald-400"
       : status === "unreachable"
         ? "bg-red-400"
-        : "bg-slate-400 animate-pulse";
+        : status === "waking"
+          ? "bg-amber-400 animate-pulse"
+          : "bg-slate-400 animate-pulse";
   return <span className={`inline-block h-1.5 w-1.5 rounded-full ${color}`} />;
 }
 
@@ -40,10 +50,23 @@ export default function Home() {
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
 
   useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    fetch(`${apiUrl}/health`)
-      .then((res) => setApiStatus(res.ok ? "ok" : "unreachable"))
-      .catch(() => setApiStatus("unreachable"));
+    const controller = new AbortController();
+
+    // This ping doubles as the wake-up call for the backend: it runs on the free
+    // Render tier, which spins the instance down after ~15 minutes idle. Firing it
+    // (with retries) as soon as the page loads means the instance is usually warm
+    // by the time someone actually drops a CSV in — and the badge reports "waking"
+    // through the cold start instead of latching to "unreachable" on the first miss.
+    apiFetch("/health", {
+      signal: controller.signal,
+      onRetry: () => setApiStatus("waking"),
+    })
+      .then(() => setApiStatus("ok"))
+      .catch(() => {
+        if (!controller.signal.aborted) setApiStatus("unreachable");
+      });
+
+    return () => controller.abort();
   }, []);
 
   return (
@@ -61,7 +84,7 @@ export default function Home() {
         </p>
         <div className="glass flex items-center gap-2 rounded-full px-4 py-1.5 text-xs text-slate-400 animate-fadeIn delay-300">
           <StatusDot status={apiStatus} />
-          <span>Backend API: {apiStatus}</span>
+          <span>Backend API: {STATUS_LABELS[apiStatus]}</span>
         </div>
       </div>
 

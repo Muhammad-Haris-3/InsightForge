@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { ApiErrorBody, ColumnProfile, TestResult, TestType } from "@/lib/types";
+import type { ColumnProfile, TestResult, TestType } from "@/lib/types";
+import { apiFetch, toErrorMessage } from "@/lib/api";
 
 const TEST_TYPE_LABELS: Record<TestType, string> = {
   t_test: "t-test",
@@ -19,6 +20,7 @@ export function StatsTestPanel({ datasetId, columns }: { datasetId: string; colu
   const [results, setResults] = useState<TestResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const runTest = useCallback(async () => {
     setError(null);
@@ -28,28 +30,23 @@ export function StatsTestPanel({ datasetId, columns }: { datasetId: string; colu
     }
 
     setIsRunning(true);
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    setIsRetrying(false);
 
     try {
-      const res = await fetch(`${apiUrl}/api/datasets/${datasetId}/tests`, {
+      const res = await apiFetch(`/api/datasets/${datasetId}/tests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ column_a: columnA, column_b: columnB }),
+        onRetry: () => setIsRetrying(true),
       });
-
-      if (!res.ok) {
-        const body = (await res.json()) as ApiErrorBody;
-        setError(body.error?.message ?? "Couldn't run that test.");
-        return;
-      }
 
       const result = (await res.json()) as TestResult;
       setResults((prev) => [result, ...prev]);
-    } catch {
-      setError("Could not reach the backend. Please try again.");
+    } catch (err) {
+      setError(toErrorMessage(err, "Couldn't run that test."));
     } finally {
       setIsRunning(false);
+      setIsRetrying(false);
     }
   }, [datasetId, columnA, columnB]);
 
@@ -90,7 +87,7 @@ export function StatsTestPanel({ datasetId, columns }: { datasetId: string; colu
           disabled={isRunning || !columnA || !columnB}
           className="btn-primary rounded-xl px-5 py-2.5 text-sm font-medium"
         >
-          {isRunning ? "Running…" : "Run Test"}
+          {isRunning ? (isRetrying ? "Waking the backend…" : "Running…") : "Run Test"}
         </button>
       </div>
 

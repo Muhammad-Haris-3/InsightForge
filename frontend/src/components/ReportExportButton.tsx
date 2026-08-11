@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { ApiErrorBody } from "@/lib/types";
+import { apiFetch, toErrorMessage } from "@/lib/api";
 
 function sanitizeFilenameStem(name: string): string {
   const stem = name.replace(/\.[^.]+$/, "");
@@ -10,21 +10,18 @@ function sanitizeFilenameStem(name: string): string {
 
 export function ReportExportButton({ datasetId, filename }: { datasetId: string; filename: string }) {
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const download = useCallback(async () => {
     setError(null);
     setIsDownloading(true);
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    setIsRetrying(false);
 
     try {
-      const res = await fetch(`${apiUrl}/api/datasets/${datasetId}/report/pdf`, { credentials: "include" });
-
-      if (!res.ok) {
-        const body = (await res.json()) as ApiErrorBody;
-        setError(body.error?.message ?? "Couldn't generate the PDF report.");
-        return;
-      }
+      const res = await apiFetch(`/api/datasets/${datasetId}/report/pdf`, {
+        onRetry: () => setIsRetrying(true),
+      });
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -35,10 +32,11 @@ export function ReportExportButton({ datasetId, filename }: { datasetId: string;
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      setError("Could not reach the backend. Please try again.");
+    } catch (err) {
+      setError(toErrorMessage(err, "Couldn't generate the PDF report."));
     } finally {
       setIsDownloading(false);
+      setIsRetrying(false);
     }
   }, [datasetId, filename]);
 
@@ -77,7 +75,7 @@ export function ReportExportButton({ datasetId, filename }: { datasetId: string;
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v3a5 5 0 0 0-5 5H4Z" />
               </svg>
-              Generating PDF…
+              {isRetrying ? "Waking the backend…" : "Generating PDF…"}
             </>
           ) : (
             <>

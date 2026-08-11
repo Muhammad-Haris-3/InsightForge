@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ApiErrorBody, ColumnProfile, EdaReport, ModelRun, Prediction } from "@/lib/types";
+import type { ColumnProfile, EdaReport, ModelRun, Prediction } from "@/lib/types";
+import { apiFetch, toErrorMessage } from "@/lib/api";
 
 const DEBOUNCE_MS = 400;
 
@@ -60,30 +61,38 @@ export function PredictSimulator({
   const [isPredicting, setIsPredicting] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    // One controller per debounced run: moving a slider again aborts the request
+    // still in flight, so a slow reply can't land after a newer one and leave the
+    // card showing a prediction for inputs the user has already changed.
+    const controller = new AbortController();
+
+    const timer = setTimeout(async () => {
       setError(null);
       setIsPredicting(true);
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
-      fetch(`${apiUrl}/api/datasets/${datasetId}/model/${run.id}/predict`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ features: values }),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const body = (await res.json()) as ApiErrorBody;
-            setError(body.error?.message ?? "Couldn't get a prediction.");
-            return;
-          }
-          setPrediction((await res.json()) as Prediction);
-        })
-        .catch(() => setError("Could not reach the backend. Please try again."))
-        .finally(() => setIsPredicting(false));
+      try {
+        const res = await apiFetch(`/api/datasets/${datasetId}/model/${run.id}/predict`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ features: values }),
+          signal: controller.signal,
+          // No backoff here — this fires off slider input, and a superseded
+          // request should die rather than wait out a cold-start retry schedule.
+          retries: 0,
+        });
+        setPrediction((await res.json()) as Prediction);
+      } catch (err) {
+        if (controller.signal.aborted) return; // superseded — leave the UI alone
+        setError(toErrorMessage(err, "Couldn't get a prediction."));
+      } finally {
+        if (!controller.signal.aborted) setIsPredicting(false);
+      }
     }, DEBOUNCE_MS);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [values, datasetId, run.id]);
 
   if (featureColumns.length === 0) return null;

@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { CategoricalFrequency, CorrelationMatrix, EdaReport, NumericDistribution } from "@/lib/types";
 
@@ -87,42 +90,90 @@ function correlationTextStyle(value: number | null): React.CSSProperties {
 }
 
 function CorrelationHeatmap({ matrix }: { matrix: CorrelationMatrix }) {
+  // Which cell the pointer is over, so the matching row label and column header
+  // can light up. On a wide matrix the sticky labels tell you *what* the axes are;
+  // this tells you which pair the cell under your finger actually belongs to.
+  const [hovered, setHovered] = useState<{ row: number; col: number } | null>(null);
+
   return (
-    <div className="overflow-x-auto">
-      <table className="border-separate border-spacing-1 text-xs">
-        <thead>
-          <tr>
-            <th className="p-1" />
-            {matrix.columns.map((col) => (
-              <th key={col} className="whitespace-nowrap p-1 font-medium text-slate-500">
-                {col}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {matrix.columns.map((rowCol, i) => (
-            <tr key={rowCol}>
-              <th className="whitespace-nowrap p-1 pr-2 text-right font-medium text-slate-500">{rowCol}</th>
-              {matrix.matrix[i].map((value, j) => (
-                <td
-                  key={matrix.columns[j]}
-                  className="h-10 w-10 rounded-md text-center font-medium tabular-nums"
-                  style={{ ...correlationCellStyle(value), ...correlationTextStyle(value) }}
-                  title={value == null ? "undefined" : value.toFixed(2)}
+    <div>
+      {/*
+        Both axes stay pinned while the matrix scrolls: the header row sticks to
+        the top, the row-label column sticks to the left, and the corner cell sticks
+        to both. Without this, swiping right on a wide matrix scrolls the column
+        names out of view and every cell becomes an anonymous number.
+
+        border-spacing is 0 rather than 1 on purpose — the gap between tiles is
+        drawn with cell padding around an inner div instead. Real border-spacing
+        leaves transparent gaps *between* the sticky cells, and scrolled content
+        shows through them.
+      */}
+      <div className="corr-scroll max-h-[70vh] overflow-auto rounded-xl">
+        <table className="border-separate border-spacing-0 text-xs">
+          <thead>
+            <tr>
+              <th className="corr-sticky-corner sticky top-0 left-0 z-30 p-0.5" />
+              {matrix.columns.map((col, j) => (
+                <th
+                  key={col}
+                  scope="col"
+                  className={`corr-sticky-head sticky top-0 z-20 p-0.5 font-medium transition-colors ${
+                    hovered?.col === j ? "text-emerald-300" : "text-slate-500"
+                  }`}
                 >
-                  {value == null ? "—" : value.toFixed(2)}
-                </td>
+                  <div className="flex h-10 w-24 items-end justify-center pb-1 text-center leading-tight break-words">
+                    {col}
+                  </div>
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+          </thead>
+          <tbody>
+            {matrix.columns.map((rowCol, i) => (
+              <tr key={rowCol}>
+                <th
+                  scope="row"
+                  className={`corr-sticky-head sticky left-0 z-10 p-0.5 text-right font-medium transition-colors ${
+                    hovered?.row === i ? "text-emerald-300" : "text-slate-500"
+                  }`}
+                >
+                  <div className="flex h-10 w-32 items-center justify-end pr-2 text-right leading-tight break-words">
+                    {rowCol}
+                  </div>
+                </th>
+                {matrix.matrix[i].map((value, j) => (
+                  <td
+                    key={matrix.columns[j]}
+                    className="p-0.5"
+                    title={`${rowCol} vs ${matrix.columns[j]}: ${value == null ? "undefined" : value.toFixed(2)}`}
+                    onMouseEnter={() => setHovered({ row: i, col: j })}
+                    onMouseLeave={() => setHovered(null)}
+                  >
+                    <div
+                      className={`flex h-10 w-24 items-center justify-center rounded-md text-center font-medium tabular-nums transition-shadow ${
+                        hovered?.row === i || hovered?.col === j
+                          ? "shadow-[inset_0_0_0_1px_rgba(52,211,153,0.55)]"
+                          : ""
+                      }`}
+                      style={{ ...correlationCellStyle(value), ...correlationTextStyle(value) }}
+                    >
+                      {value == null ? "—" : value.toFixed(2)}
+                    </div>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
         <span className="inline-flex h-2.5 w-16 rounded-full" style={{ background: `linear-gradient(90deg, ${DIVERGING_NEGATIVE}, transparent)` }} />
         negative
         <span className="ml-2 inline-flex h-2.5 w-16 rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${DIVERGING_POSITIVE})` }} />
         positive
+        {matrix.columns.length > 4 && (
+          <span className="ml-auto text-slate-600">Scroll the grid — row and column labels stay pinned.</span>
+        )}
       </p>
     </div>
   );

@@ -1,8 +1,20 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Table
+
 from app.services.eda import build_eda_payload
-from app.services.pdf_report import generate_report_pdf
+from app.services.pdf_report import (
+    _correlation_colors,
+    _correlation_story,
+    generate_report_pdf,
+)
+
+# The frame width generate_report_pdf() actually renders into: letter minus its
+# 0.6" side margins. Kept here so the width assertions below track the real page.
+AVAILABLE_WIDTH = letter[0] - 2 * 0.6 * 72
 
 # --- generate_report_pdf: FR-7 (quality report + EDA highlights + test results + model runs as PDF) ---
 
@@ -172,6 +184,96 @@ def test_unbalanced_angle_bracket_in_conclusion_does_not_crash():
     pdf_bytes = generate_report_pdf(_dataset(column_count=1), [_numeric_column()], eda, [test_result], [])
 
     assert pdf_bytes.startswith(b"%PDF-")
+
+
+# --- Correlation matrix width handling (FR-4 / FR-7) ---
+
+
+def _wide_eda(n_numeric: int):
+    """An EDA payload whose correlation matrix has n_numeric columns."""
+    import pandas as pd
+
+    df = pd.DataFrame({f"long_metric_column_{i:02d}": [i, i + 1.5, i * 2, i + 4.25] for i in range(n_numeric)})
+    return df, build_eda_payload(df, {c: "numeric" for c in df.columns})
+
+
+def _blocks(story) -> list[Table]:
+    return [f for f in story if isinstance(f, Table)]
+
+
+def test_narrow_correlation_matrix_stays_a_single_block():
+    _, eda = _wide_eda(5)
+
+    blocks = _blocks(_correlation_story(eda.correlation_matrix, AVAILABLE_WIDTH, getSampleStyleSheet()["BodyText"]))
+
+    assert len(blocks) == 1
+
+
+def test_wide_correlation_matrix_splits_into_multiple_blocks():
+    _, eda = _wide_eda(40)
+
+    blocks = _blocks(_correlation_story(eda.correlation_matrix, AVAILABLE_WIDTH, getSampleStyleSheet()["BodyText"]))
+
+    assert len(blocks) > 1
+
+
+def test_every_correlation_column_survives_the_split():
+    # The reported bug: a matrix wider than the page silently lost its trailing
+    # columns, because reportlab runs an over-wide table off the paper rather than
+    # reflowing it. Every one of the 40 columns must appear in exactly one block.
+    _, eda = _wide_eda(40)
+
+    blocks = _blocks(_correlation_story(eda.correlation_matrix, AVAILABLE_WIDTH, getSampleStyleSheet()["BodyText"]))
+
+    # Header row is [label spacer, col 1, col 2, ...] — count the value columns.
+    rendered = sum(len(b._cellvalues[0]) - 1 for b in blocks)
+    assert rendered == 40
+
+
+def test_every_correlation_block_fits_the_page_width():
+    _, eda = _wide_eda(40)
+
+    blocks = _blocks(_correlation_story(eda.correlation_matrix, AVAILABLE_WIDTH, getSampleStyleSheet()["BodyText"]))
+
+    for block in blocks:
+        assert sum(block._argW) <= AVAILABLE_WIDTH
+
+
+def test_every_correlation_block_repeats_all_rows():
+    # Each block is a horizontal slice: fewer columns, but always every row, so a
+    # reader never has to cross-reference two blocks to find one row's label.
+    _, eda = _wide_eda(40)
+
+    blocks = _blocks(_correlation_story(eda.correlation_matrix, AVAILABLE_WIDTH, getSampleStyleSheet()["BodyText"]))
+
+    for block in blocks:
+        assert len(block._cellvalues) == 41  # 40 rows + header
+
+
+def test_wide_correlation_matrix_generates_a_valid_pdf():
+    df, eda = _wide_eda(40)
+    columns = [_numeric_column(column_name=c) for c in df.columns]
+
+    pdf_bytes = generate_report_pdf(_dataset(column_count=40), columns, eda, [], [])
+
+    assert pdf_bytes.startswith(b"%PDF-")
+
+
+def test_correlation_colors_diverge_by_sign():
+    positive, _ = _correlation_colors(0.9)
+    negative, _ = _correlation_colors(-0.9)
+    neutral, _ = _correlation_colors(0.0)
+
+    assert positive.blue > positive.red  # blue-leaning
+    assert negative.red > negative.blue  # red-leaning
+    assert (neutral.red, neutral.green, neutral.blue) == (1, 1, 1)  # white at zero
+
+
+def test_correlation_colors_handle_none():
+    fill, text = _correlation_colors(None)
+
+    assert (fill.red, fill.green, fill.blue) == (1, 1, 1)
+    assert (text.red, text.green, text.blue) == (0, 0, 0)
 
 
 # --- Baseline model section (FR-8, FR-9) ---

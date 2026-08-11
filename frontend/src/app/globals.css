@@ -349,6 +349,44 @@ input[type="range"]::-moz-range-thumb {
   color: #cbd5e1;
 }
 
+/* ── Correlation matrix (sticky axes) ── */
+/*
+  Sticky header cells must be fully opaque or the scrolled cells slide visibly
+  underneath them. The glass surfaces elsewhere are translucent, so this is the
+  flattened equivalent: --surface-0 (rgba(15,23,42,.6)) composited over
+  --background (#0b0f1a).
+*/
+.corr-scroll {
+  --corr-surface: #0e1424;
+  border: 1px solid var(--border-subtle);
+  /* Anchors the sticky offsets and stops iOS Safari from rubber-banding the
+     whole page when the swipe starts inside the grid. */
+  position: relative;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.corr-sticky-head {
+  background: var(--corr-surface);
+}
+
+/* Corner cell: pinned on both axes, so it has to paint above both. */
+.corr-sticky-corner {
+  background: var(--corr-surface);
+}
+
+/* Hairlines that travel with the pinned cells, marking where the frozen axes end. */
+.corr-sticky-head:first-child,
+.corr-sticky-corner {
+  box-shadow: 1px 0 0 rgba(148, 163, 184, 0.1);
+}
+.corr-scroll thead .corr-sticky-head {
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.1);
+}
+.corr-scroll thead .corr-sticky-corner {
+  box-shadow: 1px 0 0 rgba(148, 163, 184, 0.1), 0 1px 0 rgba(148, 163, 184, 0.1);
+}
+
 /* ── Section divider ── */
 .section-divider {
   height: 1px;

@@ -89,4 +89,44 @@ describe("EdaView", () => {
     render(<EdaView eda={buildEda({ correlation_matrix: null })} />);
     expect(screen.queryByText("Correlation Matrix")).not.toBeInTheDocument();
   });
+
+  // --- Sticky axes: on a wide matrix, scrolling sideways used to carry the column
+  // names out of view, leaving anonymous numbers with nothing to read them against.
+
+  it("pins the column headers to the top of the scroll container", () => {
+    render(<EdaView eda={buildEda()} />);
+
+    for (const name of ["age", "salary"]) {
+      const header = screen.getByRole("columnheader", { name });
+      expect(header.className).toContain("sticky");
+      expect(header.className).toContain("top-0");
+    }
+  });
+
+  it("pins the row labels to the left of the scroll container", () => {
+    render(<EdaView eda={buildEda()} />);
+
+    for (const name of ["age", "salary"]) {
+      const label = screen.getByRole("rowheader", { name });
+      expect(label.className).toContain("sticky");
+      expect(label.className).toContain("left-0");
+    }
+  });
+
+  it("gives each correlation cell a title naming both of its columns", () => {
+    render(<EdaView eda={buildEda()} />);
+
+    // Without a persistent label a cell is just a number — the title spells out
+    // which pair it belongs to, matching what the pinned axes show.
+    expect(screen.getByTitle("age vs salary: 0.45")).toBeInTheDocument();
+    expect(screen.getByTitle("salary vs age: 0.45")).toBeInTheDocument();
+  });
+
+  it("scrolls the matrix inside its own container rather than the page", () => {
+    const { container } = render(<EdaView eda={buildEda()} />);
+
+    const scroller = container.querySelector(".corr-scroll");
+    expect(scroller).not.toBeNull();
+    expect(scroller?.className).toContain("overflow-auto");
+  });
 });

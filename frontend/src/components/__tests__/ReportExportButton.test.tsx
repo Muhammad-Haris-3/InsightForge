@@ -78,7 +78,14 @@ describe("ReportExportButton", () => {
   it("shows the server's error message on a non-ok response", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValueOnce({ ok: false, json: async () => ({ error: { code: "dataset_not_found", message: "No dataset found." } }) }),
+      // status + text() are what the api client reads off a failed response, so
+      // that a non-JSON error page is distinguishable from an unreachable backend.
+      vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: async () => ({ error: { code: "dataset_not_found", message: "No dataset found." } }),
+        text: async () => JSON.stringify({ error: { code: "dataset_not_found", message: "No dataset found." } }),
+      }),
     );
     const user = userEvent.setup();
     render(<ReportExportButton datasetId="d1" filename="sample.csv" />);
@@ -88,12 +95,12 @@ describe("ReportExportButton", () => {
   });
 
   it("shows a generic error when the network request throws", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("down")));
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
     const user = userEvent.setup();
     render(<ReportExportButton datasetId="d1" filename="sample.csv" />);
     await user.click(screen.getByRole("button", { name: "Download PDF Report" }));
 
-    await waitFor(() => expect(screen.getByText("Could not reach the backend. Please try again.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Could not reach the backend. Check your connection and try again.")).toBeInTheDocument());
   });
 
   it("disables the button while a download is in flight", async () => {

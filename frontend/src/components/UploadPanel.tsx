@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { ApiErrorBody, QualityReport } from "@/lib/types";
+import type { QualityReport } from "@/lib/types";
+import { apiFetch, toErrorMessage } from "@/lib/api";
 import { QualityReportView } from "@/components/QualityReportView";
 import { EdaView } from "@/components/EdaView";
 import { StatsTestPanel } from "@/components/StatsTestPanel";
@@ -16,6 +17,7 @@ export function UploadPanel() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<QualityReport | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -34,24 +36,17 @@ export function UploadPanel() {
     setStatus("uploading");
     setError(null);
     setReport(null);
+    setIsRetrying(false);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      const res = await fetch(`${apiUrl}/api/datasets/upload`, {
+      const res = await apiFetch("/api/datasets/upload", {
         method: "POST",
         body: formData,
-        credentials: "include",
+        onRetry: () => setIsRetrying(true),
       });
-
-      if (!res.ok) {
-        const body = (await res.json()) as ApiErrorBody;
-        setStatus("error");
-        setError(body.error?.message ?? "Upload failed.");
-        return;
-      }
 
       // The EDA payload rides along in this same response (see backend
       // upload_dataset) — no separate cross-site request needed, so the charts
@@ -59,9 +54,11 @@ export function UploadPanel() {
       const data = (await res.json()) as QualityReport;
       setReport(data);
       setStatus("idle");
-    } catch {
+    } catch (err) {
       setStatus("error");
-      setError("Could not reach the backend. Please try again.");
+      setError(toErrorMessage(err, "Upload failed."));
+    } finally {
+      setIsRetrying(false);
     }
   }, []);
 
@@ -139,7 +136,7 @@ export function UploadPanel() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v3a5 5 0 0 0-5 5H4Z" />
                 </svg>
-                Uploading…
+                {isRetrying ? "Waking the backend…" : "Uploading…"}
               </span>
             ) : (
               "Drop a CSV here, or click to browse"

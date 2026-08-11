@@ -33,8 +33,10 @@ function regressionRun(overrides: Partial<ModelRun> = {}): ModelRun {
   };
 }
 
-function mockJsonResponse(ok: boolean, body: unknown) {
-  return { ok, json: async () => body };
+// See the same helper in ModelPanel.test.tsx — status and text() are what the api
+// client actually reads off a failed response.
+function mockJsonResponse(ok: boolean, body: unknown, status = ok ? 200 : 400) {
+  return { ok, status, json: async () => body, text: async () => JSON.stringify(body) };
 }
 
 beforeEach(() => {
@@ -123,7 +125,7 @@ describe("PredictSimulator", () => {
     render(<PredictSimulator datasetId="d1" run={regressionRun()} columns={columns} eda={eda} />);
 
     await waitFor(
-      () => expect(screen.getByText("Could not reach the backend. Please try again.")).toBeInTheDocument(),
+      () => expect(screen.getByText("Could not reach the backend. Check your connection and try again.")).toBeInTheDocument(),
       WAIT_OPTS,
     );
   }, 10000);
