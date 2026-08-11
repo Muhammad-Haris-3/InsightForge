@@ -117,6 +117,10 @@ class ModelRunOut(BaseModel):
     # Computed fresh from the persisted feature_importance on every read, not
     # stored — see modeling.py::describe_feature_importance (FR-9).
     feature_importance_summary: str
+    # Both null for runs recorded before the training cap existed; the UI only
+    # mentions sampling when it can see that these two differ.
+    training_row_count: int | None = None
+    available_row_count: int | None = None
     created_at: datetime
 
 

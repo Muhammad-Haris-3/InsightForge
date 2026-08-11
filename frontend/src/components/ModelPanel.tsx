@@ -167,6 +167,19 @@ export function ModelPanel({
 
               <p className="text-sm text-slate-300">{run.feature_importance_summary}</p>
 
+              {/* Say so when the metrics came from a sample. A large upload is capped
+                  before fitting to bound memory, and quietly reporting sample metrics
+                  as if they covered the whole file would be misleading. */}
+              {run.training_row_count != null &&
+                run.available_row_count != null &&
+                run.training_row_count < run.available_row_count && (
+                  <p className="text-xs text-slate-500">
+                    Trained on a random sample of {run.training_row_count.toLocaleString()} of{" "}
+                    {run.available_row_count.toLocaleString()} rows, so the model fits within the backend&apos;s memory
+                    limit. Metrics and importances describe that sample.
+                  </p>
+                )}
+
               {run.feature_importance && Object.keys(run.feature_importance).length > 0 && (
                 <FeatureImportanceChart importance={run.feature_importance} />
               )}

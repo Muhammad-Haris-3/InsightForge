@@ -69,6 +69,8 @@ CREATE TABLE model_runs (
     algorithm           varchar(50) NOT NULL, -- e.g. linear_regression, random_forest
     metrics             jsonb NOT NULL, -- accuracy / R^2 / precision / recall depending on model_type
     feature_importance  jsonb,
+    training_row_count  integer, -- rows fitted on; capped for large uploads to bound memory
+    available_row_count integer, -- rows with a usable target, before that cap
     created_at          timestamptz NOT NULL DEFAULT now()
 );
 

@@ -110,4 +110,73 @@ describe("ModelPanel", () => {
 
     await waitFor(() => expect(screen.getByText("Could not reach the backend. Check your connection and try again.")).toBeInTheDocument());
   });
+
+  // --- Training-set cap disclosure ---
+
+  function trainedRun(extra: Record<string, unknown>) {
+    return mockJsonResponse(true, {
+      id: "run1",
+      dataset_id: "d1",
+      target_column: "age",
+      model_type: "regression",
+      algorithm: "random_forest",
+      metrics: { r2: 0.87 },
+      feature_importance: { city: 1.0 },
+      feature_importance_summary: "The strongest predictors of 'age' are 'city' (100%).",
+      created_at: "2026-08-10T12:00:00Z",
+      ...extra,
+    });
+  }
+
+  it("says so when the metrics came from a sampled subset of the rows", async () => {
+    // A large upload is capped before fitting to bound the backend's memory.
+    // Reporting those metrics as if they covered the whole file would mislead.
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(trainedRun({ training_row_count: 20000, available_row_count: 56000 }))
+        .mockResolvedValue(mockJsonResponse(true, { prediction: 1, probabilities: null })),
+    );
+    const user = userEvent.setup();
+    render(<ModelPanel datasetId="d1" columns={columns} eda={null} />);
+
+    await user.click(screen.getByRole("button", { name: "Train Model" }));
+
+    await waitFor(() => expect(screen.getByText(/random sample of 20,000 of 56,000 rows/)).toBeInTheDocument());
+  });
+
+  it("stays quiet about sampling when every row was used", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(trainedRun({ training_row_count: 800, available_row_count: 800 }))
+        .mockResolvedValue(mockJsonResponse(true, { prediction: 1, probabilities: null })),
+    );
+    const user = userEvent.setup();
+    render(<ModelPanel datasetId="d1" columns={columns} eda={null} />);
+
+    await user.click(screen.getByRole("button", { name: "Train Model" }));
+
+    await waitFor(() => expect(screen.getByText("R²")).toBeInTheDocument());
+    expect(screen.queryByText(/random sample/)).not.toBeInTheDocument();
+  });
+
+  it("stays quiet about sampling for a run recorded before the cap existed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(trainedRun({ training_row_count: null, available_row_count: null }))
+        .mockResolvedValue(mockJsonResponse(true, { prediction: 1, probabilities: null })),
+    );
+    const user = userEvent.setup();
+    render(<ModelPanel datasetId="d1" columns={columns} eda={null} />);
+
+    await user.click(screen.getByRole("button", { name: "Train Model" }));
+
+    await waitFor(() => expect(screen.getByText("R²")).toBeInTheDocument());
+    expect(screen.queryByText(/random sample/)).not.toBeInTheDocument();
+  });
 });

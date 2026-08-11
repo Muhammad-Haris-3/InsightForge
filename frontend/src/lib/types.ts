@@ -80,6 +80,10 @@ export interface ModelRun {
   metrics: Record<string, number>;
   feature_importance: Record<string, number> | null;
   feature_importance_summary: string;
+  // Null for runs recorded before the training cap existed. They differ when a
+  // large upload was capped to keep the forest inside the backend's memory limit.
+  training_row_count: number | null;
+  available_row_count: number | null;
   created_at: string;
 }
 

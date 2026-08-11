@@ -28,6 +28,8 @@ function regressionRun(overrides: Partial<ModelRun> = {}): ModelRun {
     metrics: { r2: 0.9 },
     feature_importance: { age: 0.7, city: 0.3 },
     feature_importance_summary: "x",
+    training_row_count: 40,
+    available_row_count: 40,
     created_at: "2026-08-10T12:00:00Z",
     ...overrides,
   };

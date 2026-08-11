@@ -48,6 +48,31 @@ TEST_SIZE = 0.2
 RANDOM_STATE = 42
 N_ESTIMATORS = 100
 
+# --- Memory ceiling (the API runs in a 512 MB container) ---
+#
+# A random forest's memory is driven by total node count, not by the size of the
+# CSV. Left unbounded, each of the 100 trees splits until its leaves are pure, so
+# node count grows with the row count: a 56k-row upload measured at +436 MB peak
+# and took 73s, which overran the container. It was killed mid-request, and since
+# the proxy's 502 carries no CORS headers the browser reported it as an
+# unreachable backend — the whole app appeared to break on large files.
+#
+# Two bounds fix it, both measured on that same 56k-row dataset:
+#
+#   all rows,   min_samples_leaf=1   +436 MB   73.1s   test R² 0.8933
+#   cap 20k,    min_samples_leaf=2   + 71 MB   17.9s   test R² 0.8949
+#
+# Accuracy does not suffer — capping trades a negligible amount of signal for a
+# 6x memory saving, and requiring 2 samples per leaf regularizes slightly, which
+# is why R² edges up rather than down. A baseline model exists to show which
+# features matter, and 20k rows is ample for that.
+MAX_TRAINING_ROWS = 20_000
+MIN_SAMPLES_LEAF = 2
+# Single-threaded on purpose: n_jobs=-1 would fit trees in parallel worker
+# processes, and on a 512 MB container the copies cost more than the speed is
+# worth.
+N_JOBS = 1
+
 
 @dataclass
 class ModelOutcome:
@@ -55,6 +80,8 @@ class ModelOutcome:
     algorithm: str
     metrics: dict[str, float]
     feature_importance: dict[str, float]  # column -> share of total importance, sorted desc, sums to ~1
+    training_row_count: int  # rows actually fitted on (<= MAX_TRAINING_ROWS)
+    available_row_count: int  # rows with a usable target, before any capping
 
 
 @dataclass
@@ -117,6 +144,26 @@ def _clean_target(df: pd.DataFrame, target_column: str, model_type: str) -> pd.D
     return working
 
 
+def _subsample(working: pd.DataFrame, target_column: str, model_type: str) -> pd.DataFrame:
+    """Cap the training set at MAX_TRAINING_ROWS so the forest fits in memory.
+
+    Deterministic (fixed random_state) because predict() re-fits this same
+    pipeline on demand rather than unpickling a stored model — an unstable sample
+    would hand back predictions from a different model than the one whose metrics
+    were reported at training time.
+    """
+    if len(working) <= MAX_TRAINING_ROWS:
+        return working
+
+    sampled = working.sample(n=MAX_TRAINING_ROWS, random_state=RANDOM_STATE)
+    # A class rare enough to vanish from the sample would turn a valid classification
+    # target into a single-class one. Vanishingly unlikely at this cap, but falling
+    # back to the full frame is cheaper than failing a request that used to work.
+    if model_type == "classification" and sampled[target_column].nunique() < 2:
+        return working
+    return sampled
+
+
 def _stringify_categorical(X: pd.DataFrame) -> pd.DataFrame:
     # Normalizes case/whitespace so a category learned from the CSV's raw text
     # (e.g. "Lahore") reliably matches an equivalent value supplied later at
@@ -147,10 +194,16 @@ def _build_pipeline(model_type: str, numeric_features: list[str], categorical_fe
         )
     preprocessor = ColumnTransformer(transformers)
 
+    forest_kwargs = {
+        "n_estimators": N_ESTIMATORS,
+        "random_state": RANDOM_STATE,
+        "min_samples_leaf": MIN_SAMPLES_LEAF,
+        "n_jobs": N_JOBS,
+    }
     model = (
-        RandomForestRegressor(n_estimators=N_ESTIMATORS, random_state=RANDOM_STATE)
+        RandomForestRegressor(**forest_kwargs)
         if model_type == "regression"
-        else RandomForestClassifier(n_estimators=N_ESTIMATORS, random_state=RANDOM_STATE)
+        else RandomForestClassifier(**forest_kwargs)
     )
     return Pipeline([("preprocess", preprocessor), ("model", model)])
 
@@ -164,6 +217,8 @@ class _FittedModel:
     categorical_features: list[str]
     X_test: pd.DataFrame
     y_test: pd.Series
+    training_row_count: int
+    available_row_count: int
 
 
 def _fit(df: pd.DataFrame, column_types: dict[str, str], target_column: str) -> _FittedModel:
@@ -177,6 +232,9 @@ def _fit(df: pd.DataFrame, column_types: dict[str, str], target_column: str) -> 
     feature_columns, numeric_features, categorical_features = _select_feature_columns(df, column_types, target_column)
 
     working = _clean_target(df[[target_column, *feature_columns]], target_column, model_type)
+    available_row_count = len(working)
+    working = _subsample(working, target_column, model_type)
+
     X = working[feature_columns]
     y = working[target_column]
 
@@ -194,6 +252,8 @@ def _fit(df: pd.DataFrame, column_types: dict[str, str], target_column: str) -> 
         categorical_features=categorical_features,
         X_test=X_test,
         y_test=y_test,
+        training_row_count=len(working),
+        available_row_count=available_row_count,
     )
 
 
@@ -273,7 +333,12 @@ def train_model(df: pd.DataFrame, column_types: dict[str, str], target_column: s
 
     feature_importance = _aggregate_feature_importance(fitted.pipeline, fitted.numeric_features, fitted.categorical_features)
     return ModelOutcome(
-        model_type=fitted.model_type, algorithm="random_forest", metrics=metrics, feature_importance=feature_importance
+        model_type=fitted.model_type,
+        algorithm="random_forest",
+        metrics=metrics,
+        feature_importance=feature_importance,
+        training_row_count=fitted.training_row_count,
+        available_row_count=fitted.available_row_count,
     )
 
 

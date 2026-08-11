@@ -99,6 +99,12 @@ class ModelRun(Base):
     algorithm: Mapped[str] = mapped_column(nullable=False)
     metrics: Mapped[dict] = mapped_column(JSONB, nullable=False)
     feature_importance: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    # Rows actually fitted on, vs rows that had a usable target value. They differ
+    # when a big upload is capped at MAX_TRAINING_ROWS — persisted so the UI can
+    # say the metrics came from a sample instead of implying the whole file.
+    # Nullable: runs recorded before this column existed have no value.
+    training_row_count: Mapped[int | None] = mapped_column(default=None)
+    available_row_count: Mapped[int | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     __table_args__ = (

@@ -4,6 +4,7 @@ import pytest
 
 from app.errors import AppError
 from app.services.modeling import (
+    MAX_TRAINING_ROWS,
     MIN_ROWS,
     describe_feature_importance,
     predict,
@@ -194,6 +195,76 @@ def test_predict_invalid_target_raises_same_errors_as_train_model():
 
 
 # --- describe_feature_importance: FR-9 (plain-language interpretation) ---
+
+
+# --- Training-set cap (bounds forest memory on a 512 MB container) ---
+
+
+def test_small_dataset_trains_on_every_row():
+    df = _regression_dataset(n=40)
+
+    outcome = train_model(df, {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}, "score")
+
+    assert outcome.training_row_count == 40
+    assert outcome.available_row_count == 40
+
+
+def test_large_dataset_is_capped_for_training():
+    # An unbounded forest on a dataset this size overran the container's memory
+    # and the request died mid-flight; the cap is what keeps it inside 512 MB.
+    df = _regression_dataset(n=MAX_TRAINING_ROWS + 500)
+
+    outcome = train_model(df, {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}, "score")
+
+    assert outcome.training_row_count == MAX_TRAINING_ROWS
+    assert outcome.available_row_count == MAX_TRAINING_ROWS + 500
+
+
+def test_available_row_count_excludes_missing_targets():
+    df = _regression_dataset(n=40)
+    df.loc[:9, "score"] = None
+
+    outcome = train_model(df, {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}, "score")
+
+    assert outcome.available_row_count == 30
+    assert outcome.training_row_count == 30
+
+
+def test_capped_training_is_deterministic():
+    # predict() re-fits this pipeline rather than unpickling a stored model, so an
+    # unstable sample would answer from a different model than the one whose
+    # metrics were reported. Same input must give byte-identical metrics.
+    df = _regression_dataset(n=MAX_TRAINING_ROWS + 500)
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
+
+    first = train_model(df, types, "score")
+    second = train_model(df, types, "score")
+
+    assert first.metrics == second.metrics
+    assert first.feature_importance == second.feature_importance
+
+
+def test_predict_matches_a_capped_model():
+    df = _regression_dataset(n=MAX_TRAINING_ROWS + 500)
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
+    train_model(df, types, "score")
+
+    first = predict(df, types, "score", {"age": 40, "salary": 60000, "city": "Lahore"})
+    second = predict(df, types, "score", {"age": 40, "salary": 60000, "city": "Lahore"})
+
+    assert first.prediction == second.prediction
+
+
+def test_capping_preserves_classification_classes():
+    df = _classification_dataset(n=MAX_TRAINING_ROWS + 500)
+
+    outcome = train_model(
+        df, {"age": "numeric", "salary": "numeric", "city": "categorical", "bracket": "categorical"}, "bracket"
+    )
+
+    assert outcome.model_type == "classification"
+    assert outcome.training_row_count == MAX_TRAINING_ROWS
+    assert outcome.metrics["accuracy"] > 0.5
 
 
 def test_describe_feature_importance_single_feature():

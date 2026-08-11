@@ -82,6 +82,8 @@ def _build_model_run_out(model_run: ModelRun) -> ModelRunOut:
         # None stays None (nullable in the schema); only sort a populated dict.
         feature_importance=sort_feature_importance(model_run.feature_importance) if model_run.feature_importance else model_run.feature_importance,
         feature_importance_summary=describe_feature_importance(model_run.feature_importance or {}, model_run.target_column),
+        training_row_count=model_run.training_row_count,
+        available_row_count=model_run.available_row_count,
         created_at=model_run.created_at,
     )
 
@@ -238,6 +240,8 @@ def train_dataset_model(
         algorithm=outcome.algorithm,
         metrics=outcome.metrics,
         feature_importance=outcome.feature_importance,
+        training_row_count=outcome.training_row_count,
+        available_row_count=outcome.available_row_count,
     )
     db.add(model_run)
     db.commit()
