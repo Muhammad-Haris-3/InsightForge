@@ -6,10 +6,19 @@ from app.errors import AppError
 from app.services.modeling import (
     MAX_TRAINING_ROWS,
     MIN_ROWS,
+    clear_fitted_cache,
     describe_feature_importance,
     predict,
     train_model,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_fitted_cache():
+    """The fitted-model cache is process-global; keep it from leaking between tests."""
+    clear_fitted_cache()
+    yield
+    clear_fitted_cache()
 
 # --- train_model: FR-8, FR-9 (auto-selected regression/classification + feature importance) ---
 
@@ -265,6 +274,72 @@ def test_capping_preserves_classification_classes():
     assert outcome.model_type == "classification"
     assert outcome.training_row_count == MAX_TRAINING_ROWS
     assert outcome.metrics["accuracy"] > 0.5
+
+
+# --- Fitted-model cache (keeps the what-if simulator from re-fitting per request) ---
+
+
+def test_cached_predict_matches_an_uncached_one():
+    # The cache must be a pure speedup — a cached model has to answer exactly what
+    # a freshly fitted one would, or the simulator silently drifts from the metrics.
+    df = _regression_dataset(n=200)
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
+    features = {"age": 40, "salary": 60000, "city": "Lahore"}
+
+    uncached = predict(df, types, "score", features)
+    cached_first = predict(df, types, "score", features, cache_key=("d1", "score"))
+    cached_again = predict(df, types, "score", features, cache_key=("d1", "score"))
+
+    assert cached_first.prediction == uncached.prediction
+    assert cached_again.prediction == uncached.prediction
+
+
+def test_training_warms_the_cache_for_the_simulator():
+    df = _regression_dataset(n=200)
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
+
+    outcome = train_model(df, types, "score", cache_key=("d1", "score"))
+    # An empty frame would fail to fit; serving from cache proves no re-fit happened.
+    prediction = predict(df.iloc[0:0], types, "score", {"age": 40}, cache_key=("d1", "score"))
+
+    assert outcome.model_type == "regression"
+    assert isinstance(prediction.prediction, float)
+
+
+def test_different_targets_do_not_share_a_cache_entry():
+    df = _regression_dataset(n=200)
+    df["bracket"] = np.where(df["salary"] > 60000, "high", "low")
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric", "bracket": "categorical"}
+
+    train_model(df, types, "score", cache_key=("d1", "score"))
+    classification = predict(df, types, "bracket", {"age": 40}, cache_key=("d1", "bracket"))
+
+    # A shared entry would hand back the regression model's numeric output here.
+    assert isinstance(classification.prediction, str)
+    assert classification.probabilities is not None
+
+
+def test_cache_is_bounded():
+    from app.services.modeling import _FITTED_CACHE, _FITTED_CACHE_MAX
+
+    df = _regression_dataset(n=100)
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
+
+    for i in range(_FITTED_CACHE_MAX + 3):
+        train_model(df, types, "score", cache_key=(f"dataset-{i}", "score"))
+
+    assert len(_FITTED_CACHE) == _FITTED_CACHE_MAX
+
+
+def test_no_cache_key_means_no_caching():
+    from app.services.modeling import _FITTED_CACHE
+
+    df = _regression_dataset(n=100)
+    types = {"age": "numeric", "salary": "numeric", "city": "categorical", "score": "numeric"}
+
+    train_model(df, types, "score")
+
+    assert len(_FITTED_CACHE) == 0
 
 
 def test_describe_feature_importance_single_feature():

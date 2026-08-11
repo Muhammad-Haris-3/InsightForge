@@ -19,6 +19,7 @@ at the cost of a full refit per prediction request. That's acceptable at the
 scale this project targets (demo-sized CSVs, not production ML serving).
 """
 
+from collections import OrderedDict
 from dataclasses import dataclass
 
 import numpy as np
@@ -46,7 +47,7 @@ CATEGORICAL_FEATURE_TYPES = ("categorical", "boolean")
 MIN_ROWS = 10
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
-N_ESTIMATORS = 100
+N_ESTIMATORS = 50  # see MAX_TRAINING_ROWS below — halved for the same reason
 
 # --- Memory ceiling (the API runs in a 512 MB container) ---
 #
@@ -66,7 +67,18 @@ N_ESTIMATORS = 100
 # 6x memory saving, and requiring 2 samples per leaf regularizes slightly, which
 # is why R² edges up rather than down. A baseline model exists to show which
 # features matter, and 20k rows is ample for that.
-MAX_TRAINING_ROWS = 20_000
+# Render's shared CPU measured ~5.3x slower than a dev machine on this fit, which
+# turned a 17s local train into ~90s in production — past the browser client's
+# request timeout, so the call still failed for the user even though the container
+# now survived it. Time scales with both bounds, and neither costs real accuracy
+# (test R² on a signal-bearing 56k dataset, against fitting all rows with 100 trees):
+#
+#   20k rows, 100 trees   ~90s on Render   R² -0.03 pts
+#   10k rows,  50 trees   ~19s on Render   R² -0.32 pts
+#
+# A third of a percentage point buys a 4.7x speedup and a wide margin against a
+# CPU whose speed varies with whatever else is on the box.
+MAX_TRAINING_ROWS = 10_000
 MIN_SAMPLES_LEAF = 2
 # Single-threaded on purpose: n_jobs=-1 would fit trees in parallel worker
 # processes, and on a 512 MB container the copies cost more than the speed is
@@ -257,6 +269,44 @@ def _fit(df: pd.DataFrame, column_types: dict[str, str], target_column: str) -> 
     )
 
 
+# --- Fitted-model cache ---
+#
+# The what-if simulator (FR-10) fires a prediction on every slider move, and each
+# one used to re-fit the entire forest — the full training cost, repeatedly, to
+# answer a question about a single row. Caching the fitted pipeline makes every
+# prediction after the first one effectively free.
+#
+# Keyed on (dataset_id, target_column), which is safe because a dataset is
+# immutable once uploaded: raw_csv is written at upload time and never updated, so
+# the same key can never refer to different data. Bounded at two entries because
+# this runs in a 512 MB container — the point is to serve a burst of slider moves
+# against one model, not to accumulate every model ever fitted.
+CacheKey = tuple[str, str]
+_FITTED_CACHE: "OrderedDict[CacheKey, _FittedModel]" = OrderedDict()
+_FITTED_CACHE_MAX = 2
+
+
+def _fit_cached(
+    df: pd.DataFrame, column_types: dict[str, str], target_column: str, cache_key: CacheKey | None
+) -> "_FittedModel":
+    if cache_key is not None and cache_key in _FITTED_CACHE:
+        _FITTED_CACHE.move_to_end(cache_key)
+        return _FITTED_CACHE[cache_key]
+
+    fitted = _fit(df, column_types, target_column)
+
+    if cache_key is not None:
+        _FITTED_CACHE[cache_key] = fitted
+        while len(_FITTED_CACHE) > _FITTED_CACHE_MAX:
+            _FITTED_CACHE.popitem(last=False)
+    return fitted
+
+
+def clear_fitted_cache() -> None:
+    """Drop every cached model. Used by tests to keep them independent."""
+    _FITTED_CACHE.clear()
+
+
 def _aggregate_feature_importance(
     pipeline: Pipeline, numeric_features: list[str], categorical_features: list[str]
 ) -> dict[str, float]:
@@ -313,8 +363,12 @@ def describe_feature_importance(feature_importance: dict[str, float], target_col
     return f"The strongest predictors of '{target_column}' are {joined}."
 
 
-def train_model(df: pd.DataFrame, column_types: dict[str, str], target_column: str) -> ModelOutcome:
-    fitted = _fit(df, column_types, target_column)
+def train_model(
+    df: pd.DataFrame, column_types: dict[str, str], target_column: str, cache_key: CacheKey | None = None
+) -> ModelOutcome:
+    # Populates the cache so the simulator's first prediction — which the UI fires
+    # as soon as a run renders — doesn't pay to fit the very model just built here.
+    fitted = _fit_cached(df, column_types, target_column, cache_key)
     y_pred = fitted.pipeline.predict(fitted.X_test)
 
     if fitted.model_type == "regression":
@@ -347,11 +401,12 @@ def predict(
     column_types: dict[str, str],
     target_column: str,
     feature_values: dict[str, object],
+    cache_key: CacheKey | None = None,
 ) -> PredictionOutcome:
     """Live "what-if" prediction (FR-10) — feature_values may be partial;
     any feature not supplied (or not a real column) falls back to the
     training data's median/most-frequent value via the fitted imputer."""
-    fitted = _fit(df, column_types, target_column)
+    fitted = _fit_cached(df, column_types, target_column, cache_key)
 
     row = {col: feature_values.get(col) for col in fitted.feature_columns}
     input_df = pd.DataFrame([row], columns=fitted.feature_columns)

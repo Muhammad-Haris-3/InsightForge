@@ -26,8 +26,13 @@ import type { ApiErrorBody } from "@/lib/types";
 /** Statuses Render's router returns while an instance is asleep or restarting. */
 const COLD_START_STATUSES = new Set([502, 503, 504]);
 
-/** Generous — a free-tier cold start with pandas/sklearn in the image is ~40-70s. */
-const REQUEST_TIMEOUT_MS = 90_000;
+/**
+ * Generous on purpose. Two slow paths stack here: a free-tier cold start with
+ * pandas/sklearn in the image, and training on a large upload over a shared CPU.
+ * At 90s this timeout was itself failing requests the backend went on to answer
+ * successfully — the abort looked identical to a broken backend from the UI.
+ */
+const REQUEST_TIMEOUT_MS = 150_000;
 
 /**
  * Backoff between cold-start retries. Length also decides the attempt count.

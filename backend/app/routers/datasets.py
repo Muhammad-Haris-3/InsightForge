@@ -231,7 +231,7 @@ def train_dataset_model(
     dataset = _get_owned_dataset(dataset_id, session, db)
     df = _load_dataframe(dataset)
     column_types = {c.column_name: c.data_type for c in dataset.columns_profile}
-    outcome = train_model(df, column_types, body.target_column)
+    outcome = train_model(df, column_types, body.target_column, cache_key=(str(dataset.id), body.target_column))
 
     model_run = ModelRun(
         dataset_id=dataset.id,
@@ -290,7 +290,13 @@ def predict_with_model(
     dataset = _get_owned_dataset(dataset_id, session, db)
     model_run = _get_owned_model_run(dataset, run_id, db)
     column_types = {c.column_name: c.data_type for c in dataset.columns_profile}
-    outcome = run_prediction(_load_dataframe(dataset), column_types, model_run.target_column, body.features)
+    outcome = run_prediction(
+        _load_dataframe(dataset),
+        column_types,
+        model_run.target_column,
+        body.features,
+        cache_key=(str(dataset.id), model_run.target_column),
+    )
     return PredictionOut(prediction=outcome.prediction, probabilities=outcome.probabilities)
 
 
