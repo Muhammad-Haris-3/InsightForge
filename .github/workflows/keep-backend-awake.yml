@@ -1,0 +1,70 @@
+name: keep-backend-awake
+
+# The API runs on Render's free tier, which stops the container after ~15 minutes
+# with no traffic. The next visitor then pays a cold start of roughly a minute,
+# during which Render's router answers 502 — which is what made the app look
+# broken. Pinging /health on a schedule keeps the container in service.
+#
+# Two things worth knowing about GitHub's scheduler before trusting this:
+#   * `schedule` is best-effort. Runs are queued, not guaranteed on time, and can
+#     be delayed by 10+ minutes when GitHub is busy. The ping interval is set
+#     well under Render's idle window, and each run pings several times spaced
+#     out, so a late run still lands inside the window.
+#   * GitHub disables scheduled workflows on a repo with no commits for 60 days.
+#     If the API starts sleeping again after a quiet stretch, check whether this
+#     workflow was auto-disabled before looking anywhere else.
+#
+# Actions minutes are free and unlimited on public repos, so this costs nothing.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  # Lets you trigger a wake-up by hand from the Actions tab — handy right before
+  # sending the live link to someone.
+  workflow_dispatch:
+
+# A slow ping should never pile up on top of the next scheduled run.
+concurrency:
+  group: keep-backend-awake
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HEALTH_URL: https://insightforge-api-muyx.onrender.com/health
+    steps:
+      - name: Ping /health every 3 minutes
+        run: |
+          set -uo pipefail
+          # Three pings ~3 minutes apart. If GitHub delivers this run late, the
+          # spread still puts a request inside Render's idle window.
+          for attempt in 1 2 3; do
+            [ "$attempt" -gt 1 ] && sleep 180
+
+            # --max-time 120 because a cold start has to boot pandas/scipy/sklearn;
+            # a short timeout would abandon the very wake-up we are paying for.
+            code=$(curl -s -o /tmp/body.txt -w '%{http_code}' --max-time 120 "$HEALTH_URL" || echo "000")
+            echo "ping $attempt -> HTTP $code $(cat /tmp/body.txt)"
+
+            # A 502/503 means Render is mid-boot: the ping did its job by waking
+            # the container, so give it a moment and confirm it came up.
+            if [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "000" ]; then
+              echo "  cold start in progress, waiting 45s to confirm"
+              sleep 45
+              code=$(curl -s -o /tmp/body.txt -w '%{http_code}' --max-time 120 "$HEALTH_URL" || echo "000")
+              echo "  recheck -> HTTP $code $(cat /tmp/body.txt)"
+            fi
+          done
+
+          # Only the final state decides the run. Failing here surfaces a genuinely
+          # down backend in the Actions tab instead of letting it go unnoticed.
+          if [ "$code" != "200" ]; then
+            echo "::error::Backend did not return 200 (last status: $code)"
+            exit 1
+          fi
+          echo "Backend is awake."
