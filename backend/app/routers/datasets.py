@@ -5,6 +5,7 @@ import uuid
 import pandas as pd
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import Response
+from sqlalchemy import insert
 from sqlalchemy.orm import Session as DbSession
 
 from app.database import get_db
@@ -116,18 +117,29 @@ async def upload_dataset(
     db.add(dataset)
     db.flush()  # assigns dataset.id for the columns_profile FK below
 
-    for col in profile.columns:
-        db.add(
-            ColumnProfile(
-                dataset_id=dataset.id,
-                column_name=col.column_name,
-                data_type=col.data_type,
-                missing_count=col.missing_count,
-                missing_pct=col.missing_pct,
-                unique_count=col.unique_count,
-                outlier_count=col.outlier_count,
-                summary_stats=col.summary_stats,
-            )
+    # One statement for every column, not one per column. ColumnProfile's primary
+    # key is a server-side gen_random_uuid(), so adding these through the ORM made
+    # SQLAlchemy issue an INSERT ... RETURNING per row to read each id back — a
+    # separate database round trip each time. That is invisible on a narrow CSV and
+    # brutal on a wide one: a 300-column upload spent ~61s here in production and
+    # would have blown past the client's timeout entirely a little wider than that.
+    # Nothing needs the generated ids, so a bulk insert removes the round trips.
+    if profile.columns:
+        db.execute(
+            insert(ColumnProfile),
+            [
+                {
+                    "dataset_id": dataset.id,
+                    "column_name": col.column_name,
+                    "data_type": col.data_type,
+                    "missing_count": col.missing_count,
+                    "missing_pct": col.missing_pct,
+                    "unique_count": col.unique_count,
+                    "outlier_count": col.outlier_count,
+                    "summary_stats": col.summary_stats,
+                }
+                for col in profile.columns
+            ],
         )
 
     db.commit()

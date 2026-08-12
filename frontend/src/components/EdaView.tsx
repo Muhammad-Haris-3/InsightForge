@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { CategoricalFrequency, CorrelationMatrix, EdaReport, NumericDistribution } from "@/lib/types";
 
@@ -11,6 +11,66 @@ const HISTOGRAM_COLOR = "#60a5fa"; // brighter blue for dark bg
 const FREQUENCY_COLOR = "#34d399"; // emerald for dark bg
 const DIVERGING_POSITIVE = "#60a5fa"; // blue
 const DIVERGING_NEGATIVE = "#f87171"; // brighter red for dark bg
+
+// A wide CSV produces one chart per column, and each Recharts chart is hundreds of
+// DOM nodes. A 300-column upload rendered 301 charts and ~220,000 nodes, which made
+// the page unresponsive — the browser, not the backend, was the wall. Rendering a
+// screenful up front and the rest on request keeps a wide dataset usable without
+// hiding any of it.
+const CHART_PREVIEW_LIMIT = 12;
+
+// The heatmap renders a cell per pair, so its DOM cost is quadratic: 300 numeric
+// columns is 90,000 cells and ~180,000 nodes on its own. Past this width it is
+// also genuinely unreadable on screen — which is what the paginated blocks in the
+// PDF export are for — so it renders on request rather than by default.
+const CORRELATION_AUTO_RENDER_LIMIT = 40;
+
+function ChartSection<T>({
+  title,
+  items,
+  keyOf,
+  renderItem,
+}: {
+  title: string;
+  items: T[];
+  keyOf: (item: T) => string;
+  renderItem: (item: T) => React.ReactNode;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const hiddenCount = items.length - CHART_PREVIEW_LIMIT;
+  const visible = showAll ? items : items.slice(0, CHART_PREVIEW_LIMIT);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+        {title}
+        {hiddenCount > 0 && <span className="ml-2 normal-case tracking-normal text-slate-600">({items.length} columns)</span>}
+      </h3>
+      <div className="section-divider" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {visible.map((item) => (
+          <Fragment key={keyOf(item)}>{renderItem(item)}</Fragment>
+        ))}
+      </div>
+      {hiddenCount > 0 && (
+        <div className="flex flex-col items-start gap-1.5">
+          <button
+            onClick={() => setShowAll((prev) => !prev)}
+            className="btn-secondary rounded-xl px-4 py-2 text-sm font-medium"
+          >
+            {showAll ? "Show fewer" : `Show all ${items.length} charts (${hiddenCount} more)`}
+          </button>
+          {!showAll && (
+            <p className="text-xs text-slate-600">
+              Showing the first {CHART_PREVIEW_LIMIT}. Drawing every chart at once can make the page slow to respond on
+              a dataset this wide.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function formatBinLabel(start: number, end: number): string {
   return start === end ? `${start}` : `${start}–${end}`;
@@ -179,6 +239,35 @@ function CorrelationHeatmap({ matrix }: { matrix: CorrelationMatrix }) {
   );
 }
 
+function CorrelationSection({ matrix }: { matrix: CorrelationMatrix }) {
+  const size = matrix.columns.length;
+  const isHuge = size > CORRELATION_AUTO_RENDER_LIMIT;
+  const [render, setRender] = useState(!isHuge);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+        Correlation Matrix
+        {isHuge && <span className="ml-2 normal-case tracking-normal text-slate-600">({size} × {size})</span>}
+      </h3>
+      <div className="section-divider" />
+      {render ? (
+        <CorrelationHeatmap matrix={matrix} />
+      ) : (
+        <div className="flex flex-col items-start gap-1.5">
+          <button onClick={() => setRender(true)} className="btn-secondary rounded-xl px-4 py-2 text-sm font-medium">
+            Render {size} × {size} matrix ({(size * size).toLocaleString()} cells)
+          </button>
+          <p className="text-xs text-slate-600">
+            A matrix this wide is slow to draw and hard to read on screen. The PDF export lays it out across numbered
+            blocks instead, which is usually the easier way to read it.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function EdaView({ eda }: { eda: EdaReport }) {
   const hasNumeric = eda.numeric_distributions.length > 0;
   const hasCategorical = eda.categorical_frequencies.length > 0;
@@ -190,36 +279,24 @@ export function EdaView({ eda }: { eda: EdaReport }) {
       <h2 className="font-semibold text-slate-100 text-lg">Exploratory Data Analysis</h2>
 
       {hasNumeric && (
-        <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Distributions</h3>
-          <div className="section-divider" />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {eda.numeric_distributions.map((dist) => (
-              <NumericHistogram key={dist.column_name} distribution={dist} />
-            ))}
-          </div>
-        </div>
+        <ChartSection
+          title="Distributions"
+          items={eda.numeric_distributions}
+          keyOf={(dist) => dist.column_name}
+          renderItem={(dist) => <NumericHistogram distribution={dist} />}
+        />
       )}
 
       {hasCategorical && (
-        <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Category Frequencies</h3>
-          <div className="section-divider" />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {eda.categorical_frequencies.map((freq) => (
-              <CategoricalBarChart key={freq.column_name} frequency={freq} />
-            ))}
-          </div>
-        </div>
+        <ChartSection
+          title="Category Frequencies"
+          items={eda.categorical_frequencies}
+          keyOf={(freq) => freq.column_name}
+          renderItem={(freq) => <CategoricalBarChart frequency={freq} />}
+        />
       )}
 
-      {eda.correlation_matrix && (
-        <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Correlation Matrix</h3>
-          <div className="section-divider" />
-          <CorrelationHeatmap matrix={eda.correlation_matrix} />
-        </div>
-      )}
+      {eda.correlation_matrix && <CorrelationSection matrix={eda.correlation_matrix} />}
     </div>
   );
 }

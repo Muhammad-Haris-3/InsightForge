@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { EdaView } from "@/components/EdaView";
 import type { EdaReport } from "@/lib/types";
 
@@ -120,6 +121,69 @@ describe("EdaView", () => {
     // which pair it belongs to, matching what the pinned axes show.
     expect(screen.getByTitle("age vs salary: 0.45")).toBeInTheDocument();
     expect(screen.getByTitle("salary vs age: 0.45")).toBeInTheDocument();
+  });
+
+  // --- Chart capping: a wide CSV rendered one chart per column, and ~220k DOM
+  // nodes made the page unresponsive. The cap is what keeps a wide dataset usable.
+
+  function manyNumeric(n: number) {
+    return Array.from({ length: n }, (_, i) => ({
+      column_name: `col_${i}`,
+      bins: [{ bin_start: 0, bin_end: 10, count: 5 }],
+    }));
+  }
+
+  it("renders every chart when the dataset is narrow", () => {
+    render(<EdaView eda={buildEda({ numeric_distributions: manyNumeric(4), categorical_frequencies: [] })} />);
+
+    expect(screen.getAllByRole("heading", { level: 4 })).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: /Show all/ })).not.toBeInTheDocument();
+  });
+
+  it("caps the charts rendered up front on a wide dataset", () => {
+    render(<EdaView eda={buildEda({ numeric_distributions: manyNumeric(50), categorical_frequencies: [] })} />);
+
+    expect(screen.getAllByRole("heading", { level: 4 })).toHaveLength(12);
+    expect(screen.getByRole("button", { name: "Show all 50 charts (38 more)" })).toBeInTheDocument();
+  });
+
+  it("reveals the rest on request, so nothing is hidden permanently", async () => {
+    const user = userEvent.setup();
+    render(<EdaView eda={buildEda({ numeric_distributions: manyNumeric(50), categorical_frequencies: [] })} />);
+
+    await user.click(screen.getByRole("button", { name: "Show all 50 charts (38 more)" }));
+
+    expect(screen.getAllByRole("heading", { level: 4 })).toHaveLength(50);
+    expect(screen.getByRole("button", { name: "Show fewer" })).toBeInTheDocument();
+  });
+
+  it("shows the column count so a wide dataset is not mistaken for a short one", () => {
+    render(<EdaView eda={buildEda({ numeric_distributions: manyNumeric(50), categorical_frequencies: [] })} />);
+
+    expect(screen.getByText("(50 columns)")).toBeInTheDocument();
+  });
+
+  it("renders a wide correlation matrix only on request", async () => {
+    // 90,000 cells is ~180,000 DOM nodes on its own — enough to stall the page.
+    const columns = Array.from({ length: 60 }, (_, i) => `c_${i}`);
+    const eda = buildEda({
+      correlation_matrix: { columns, matrix: columns.map(() => columns.map(() => 0.5)) },
+    });
+    const user = userEvent.setup();
+    render(<EdaView eda={eda} />);
+
+    expect(screen.queryByRole("rowheader", { name: "c_0" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Render 60 × 60 matrix/ }));
+
+    expect(screen.getByRole("rowheader", { name: "c_0" })).toBeInTheDocument();
+  });
+
+  it("renders a normal-width correlation matrix immediately", () => {
+    render(<EdaView eda={buildEda()} />);
+
+    expect(screen.getByRole("rowheader", { name: "age" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Render .* matrix/ })).not.toBeInTheDocument();
   });
 
   it("scrolls the matrix inside its own container rather than the page", () => {

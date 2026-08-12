@@ -4,6 +4,7 @@ import pytest
 
 from app.errors import AppError
 from app.services.profiling import (
+    DATETIME_PROBE_SAMPLE_SIZE,
     MAX_UPLOAD_BYTES,
     infer_data_type,
     profile_dataframe,
@@ -116,3 +117,48 @@ def test_infers_text_from_high_cardinality_strings():
 def test_infers_datetime():
     series = pd.Series(["2024-01-01", "2024-02-15", "2024-03-30"])
     assert infer_data_type(series) == "datetime"
+
+
+# --- Sampled datetime probe (keeps profiling tractable on text-heavy uploads) ---
+#
+# Parsing every row of every text column dominated upload time — 98% of type
+# inference — so past DATETIME_PROBE_SAMPLE_SIZE the probe runs on a sample.
+# Classification must not change because of it.
+
+
+def _big(values: list[str]) -> pd.Series:
+    """A column comfortably larger than the probe sample, so sampling kicks in."""
+    n = DATETIME_PROBE_SAMPLE_SIZE * 3
+    return pd.Series([values[i % len(values)] for i in range(n)])
+
+
+def test_large_datetime_column_is_still_detected():
+    series = pd.Series(pd.date_range("2020-01-01", periods=DATETIME_PROBE_SAMPLE_SIZE * 3, freq="h").astype(str))
+    assert infer_data_type(series) == "datetime"
+
+
+def test_large_text_column_is_not_mistaken_for_datetime():
+    series = pd.Series([f"free text entry number {i} with unique content" for i in range(DATETIME_PROBE_SAMPLE_SIZE * 3)])
+    assert infer_data_type(series) == "text"
+
+
+def test_large_categorical_column_is_still_categorical():
+    assert infer_data_type(_big(["Lahore", "Karachi", "Islamabad"])) == "categorical"
+
+
+def test_large_boolean_column_is_still_boolean():
+    assert infer_data_type(_big(["true", "false"])) == "boolean"
+
+
+def test_large_numeric_column_skips_the_probe_entirely():
+    # Numeric columns return before the datetime probe; guard against a refactor
+    # accidentally routing them through it.
+    series = pd.Series(range(DATETIME_PROBE_SAMPLE_SIZE * 3))
+    assert infer_data_type(series) == "numeric"
+
+
+def test_sampled_inference_is_stable_across_calls():
+    # The inferred type is persisted per column, so re-profiling identical data
+    # must not produce a different answer.
+    series = _big(["2024-01-01", "not a date at all", "2024-03-30", "2024-04-01"])
+    assert infer_data_type(series) == infer_data_type(series) == infer_data_type(series)
