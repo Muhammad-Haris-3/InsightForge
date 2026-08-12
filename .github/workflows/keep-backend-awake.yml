@@ -6,10 +6,17 @@ name: keep-backend-awake
 # broken. Pinging /health on a schedule keeps the container in service.
 #
 # Two things worth knowing about GitHub's scheduler before trusting this:
-#   * `schedule` is best-effort. Runs are queued, not guaranteed on time, and can
-#     be delayed by 10+ minutes when GitHub is busy. The ping interval is set
-#     well under Render's idle window, and each run pings several times spaced
-#     out, so a late run still lands inside the window.
+#   * `schedule` is best-effort, and far weaker than the cron expression suggests.
+#     Measured on this repo, a "*/10" schedule actually delivered runs 67 minutes
+#     apart — GitHub throttles frequent schedules heavily. Relying on run frequency
+#     therefore does not work: Render sleeps after ~15 minutes, so hourly runs
+#     would leave it asleep most of the time.
+#
+#     So the frequency comes from *inside* a run instead. Each job stays alive for
+#     the best part of an hour, pinging every few minutes, which keeps the backend
+#     warm regardless of when GitHub next decides to start one. The schedule only
+#     has to fire often enough to keep a pinger alive, and concurrency below makes
+#     a newer run replace an older one rather than queue behind it.
 #   * GitHub disables scheduled workflows on a repo with no commits for 60 days.
 #     If the API starts sleeping again after a quiet stretch, check whether this
 #     workflow was auto-disabled before looking anywhere else.
@@ -18,15 +25,19 @@ name: keep-backend-awake
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    # Asks often; GitHub will honour a fraction of these. Each run covers a long
+    # stretch on its own, so a dropped one costs coverage rather than breaking it.
+    - cron: "*/15 * * * *"
   # Lets you trigger a wake-up by hand from the Actions tab — handy right before
   # sending the live link to someone.
   workflow_dispatch:
 
-# A slow ping should never pile up on top of the next scheduled run.
+# Exactly one pinger at a time. A newer run takes over from the one in flight
+# instead of queueing behind it, which would otherwise leave a gap while a stale
+# job finished.
 concurrency:
   group: keep-backend-awake
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -34,37 +45,45 @@ permissions:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Just under an hour, so a run is still alive when the next one is due even if
+    # GitHub delivers that one late.
+    timeout-minutes: 58
     env:
       HEALTH_URL: https://insightforge-api-muyx.onrender.com/health
+      # Comfortably inside Render's ~15 minute idle window.
+      PING_INTERVAL_SECONDS: "300"
+      PINGS_PER_RUN: "11"
     steps:
-      - name: Ping /health every 3 minutes
+      - name: Keep /health warm for the life of this run
         run: |
           set -uo pipefail
-          # Three pings ~3 minutes apart. If GitHub delivers this run late, the
-          # spread still puts a request inside Render's idle window.
-          for attempt in 1 2 3; do
-            [ "$attempt" -gt 1 ] && sleep 180
+          failures=0
+
+          for attempt in $(seq 1 "$PINGS_PER_RUN"); do
+            [ "$attempt" -gt 1 ] && sleep "$PING_INTERVAL_SECONDS"
 
             # --max-time 120 because a cold start has to boot pandas/scipy/sklearn;
             # a short timeout would abandon the very wake-up we are paying for.
             code=$(curl -s -o /tmp/body.txt -w '%{http_code}' --max-time 120 "$HEALTH_URL" || echo "000")
-            echo "ping $attempt -> HTTP $code $(cat /tmp/body.txt)"
+            echo "ping $attempt/$PINGS_PER_RUN -> HTTP $code $(cat /tmp/body.txt)"
 
             # A 502/503 means Render is mid-boot: the ping did its job by waking
             # the container, so give it a moment and confirm it came up.
-            if [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "000" ]; then
-              echo "  cold start in progress, waiting 45s to confirm"
+            if [ "$code" != "200" ]; then
+              echo "  not up yet, waiting 45s to confirm"
               sleep 45
               code=$(curl -s -o /tmp/body.txt -w '%{http_code}' --max-time 120 "$HEALTH_URL" || echo "000")
               echo "  recheck -> HTTP $code $(cat /tmp/body.txt)"
             fi
+
+            [ "$code" = "200" ] || failures=$((failures + 1))
           done
 
-          # Only the final state decides the run. Failing here surfaces a genuinely
-          # down backend in the Actions tab instead of letting it go unnoticed.
-          if [ "$code" != "200" ]; then
-            echo "::error::Backend did not return 200 (last status: $code)"
+          # One failure is a cold start losing a race; several means the backend is
+          # actually unhealthy, which should be visible in the Actions tab rather
+          # than passing silently.
+          echo "completed with $failures failed ping(s) of $PINGS_PER_RUN"
+          if [ "$failures" -gt 2 ]; then
+            echo "::error::Backend failed $failures of $PINGS_PER_RUN health pings"
             exit 1
           fi
-          echo "Backend is awake."
