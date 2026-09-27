@@ -70,6 +70,7 @@ class ColumnProfile(Base):
 
 class TestResult(Base):
     __tablename__ = "test_results"
+    __test__ = False  # stop pytest collecting this model as a test class
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
     dataset_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)

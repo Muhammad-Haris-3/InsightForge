@@ -61,10 +61,10 @@ See [InsightForge_Design_Phase_v1.0.md](InsightForge_Design_Phase_v1.0.md) for t
 
 ## Testing
 
-153 automated tests across both layers, run in CI on every push:
+203 automated tests across both layers, run in CI on every push:
 
-- **Backend** — 106 pytest cases (`backend/tests/`) covering validation edge cases, profiling correctness, EDA/stats/modeling logic, API-level session isolation, and several regression tests pinned to real bugs caught during development (see [decisions worth remembering](#milestones) in each milestone doc — e.g. Postgres JSONB not preserving dict key order, or a PDF library crashing on unescaped user text).
-- **Frontend** — 47 Vitest + React Testing Library cases (`frontend/src/components/__tests__/`) covering client-side validation, upload/error flows, chart rendering, and the debounced live-prediction flow.
+- **Backend** — 131 pytest cases (`backend/tests/`) covering validation edge cases, profiling correctness, EDA/stats/modeling logic, API-level session isolation, and several regression tests pinned to real bugs caught during development (see [decisions worth remembering](#milestones) in each milestone doc — e.g. Postgres JSONB not preserving dict key order, or a PDF library crashing on unescaped user text).
+- **Frontend** — 72 Vitest + React Testing Library cases (`frontend/src/components/__tests__/`, `frontend/src/lib/__tests__/`) covering client-side validation, upload/error flows, chart rendering, and the debounced live-prediction flow.
 
 ```bash
 cd backend && pytest
